@@ -54,7 +54,8 @@ async function handler(req, res) {
             data: {
               nombre: nombreCarrera,
               codigo: carreraTotem.codigoTotem,
-              facultadId: facultad.id
+              facultadId: facultad.id,
+              activa: true
             }
           });
           carrerasCreadas++;

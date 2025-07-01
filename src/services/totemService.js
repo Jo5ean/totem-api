@@ -464,7 +464,7 @@ class TotemService {
           data: {
             nombre: `Facultad ${sector}`,
             codigo: sector.substring(0, 10),
-            activo: true
+            activa: true
           }
         });
         
@@ -490,7 +490,7 @@ class TotemService {
             nombre: `Carrera ${carreraCode}`,
             codigo: carreraCode.substring(0, 10),
             facultadId: 1, // Facultad por defecto
-            activo: true
+            activa: true
           }
         });
         
@@ -515,8 +515,7 @@ class TotemService {
             data: {
               nombre: `Aula ${aulaInfo}`,
               capacidad: 50, // Capacidad por defecto
-              activo: true,
-              tipoAula: 'regular'
+              disponible: true
             }
           });
           aulasCreadas++;
