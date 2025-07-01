@@ -36,6 +36,7 @@ app.use(cors({
     process.env.BACKOFFICE_URL || 'http://localhost:3001', // Backoffice
     process.env.FRONTEND_URL || 'http://localhost:4321',   // Web frontend
     'https://www.ucasal.edu.ar', // Dominio principal UCASAL
+    'https://wwwold.ucasal.edu.ar', // Dominio donde está desplegado el frontend
     'http://localhost:3000'  // Para desarrollo
   ],
   credentials: true,
