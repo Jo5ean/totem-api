@@ -30,8 +30,8 @@ router.post('/setup', async (req, res) => {
     let facultadesCreadas = 0;
     for (const f of facultades) {
       const result = await prisma.facultad.upsert({
-        where: { codigo: f.codigo },
-        update: { nombre: f.nombre },
+        where: { nombre: f.nombre },
+        update: { codigo: f.codigo },
         create: f
       });
       facultadesCreadas++;
