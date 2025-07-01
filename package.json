@@ -6,6 +6,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "prebuild": "npm install && npm run db:generate",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -16,7 +17,8 @@
     "railway:setup": "npm run db:push && node scripts/totem-master.js",
     "railway:deploy": "npm run build && npm run db:generate",
     "railway:start": "npm run db:generate && node server.js",
-    "clean:cache": "rm -rf node_modules/.cache .next/cache || true"
+    "clean:cache": "rm -rf node_modules/.cache .next/cache || true",
+    "postinstall": "npm run db:generate"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -28,13 +30,12 @@
     "googleapis": "^144.0.0",
     "mysql2": "^3.14.1",
     "next": "^15.0.3",
-    "prisma": "^6.9.0"
-  },
-  "devDependencies": {
+    "prisma": "^6.9.0",
     "@types/node": "^22.7.9",
     "eslint": "^9.13.0",
     "eslint-config-next": "^15.0.3"
   },
+  "devDependencies": {},
   "keywords": [
     "api",
     "rest",
