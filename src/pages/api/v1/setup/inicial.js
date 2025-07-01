@@ -1,5 +1,5 @@
 // 🚀 SETUP INICIAL AUTOMÁTICO PARA RAILWAY
-import prisma from '../../../lib/db.js';
+import prisma from '../../../../lib/db.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
