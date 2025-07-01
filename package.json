@@ -14,7 +14,9 @@
     "db:studio": "npx prisma studio",
     "server": "node server.js",
     "railway:setup": "npm run db:push && node scripts/totem-master.js",
-    "railway:deploy": "npm run build && npm run db:generate"
+    "railway:deploy": "npm run build && npm run db:generate",
+    "railway:start": "npm run db:generate && node server.js",
+    "clean:cache": "rm -rf node_modules/.cache .next/cache || true"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
@@ -44,5 +46,9 @@
     "mysql"
   ],
   "author": "UCASAL",
-  "license": "MIT"
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
 }
