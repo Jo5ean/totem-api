@@ -1,10 +1,47 @@
 import express from 'express';
 import prisma from '../lib/db.js';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 
+const execPromise = promisify(exec);
 const router = express.Router();
 
 router.get('/', (req, res) => {
   res.json({ success: true, message: 'API Debug - En desarrollo', data: [] });
+});
+
+// POST /api/debug/migrate - Crear tablas con Prisma
+router.post('/migrate', async (req, res) => {
+  try {
+    console.log('🚀 Ejecutando migraciones de Prisma...');
+    
+    // Ejecutar prisma db push para crear las tablas
+    const { stdout, stderr } = await execPromise('npx prisma db push --accept-data-loss', {
+      cwd: '/app'
+    });
+    
+    console.log('✅ Migraciones completadas');
+    console.log('STDOUT:', stdout);
+    if (stderr) console.log('STDERR:', stderr);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Migraciones de base de datos ejecutadas exitosamente',
+      output: stdout,
+      timestamp: new Date().toISOString()
+    });
+    
+  } catch (error) {
+    console.error('❌ Error ejecutando migraciones:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Error ejecutando migraciones',
+      message: error.message,
+      output: error.stdout || '',
+      errorOutput: error.stderr || ''
+    });
+  }
 });
 
 // POST /api/debug/setup - Crear tablas y datos iniciales
