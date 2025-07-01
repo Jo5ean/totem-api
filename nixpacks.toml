@@ -1,0 +1,17 @@
+[build]
+cmd = "npm ci && npm run db:generate && npm run build"
+
+[start]
+cmd = "node server.js"
+
+[variables]
+NODE_ENV = "production"
+
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "npm-9_x"]
+
+[phases.install]
+cmd = "npm ci"
+
+[phases.build]
+cmd = "npm run db:generate && npm run build" 
