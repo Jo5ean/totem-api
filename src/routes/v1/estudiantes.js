@@ -64,25 +64,13 @@ router.get('/examenes/:dni', async (req, res) => {
     for (const examenExterno of examenesExternos) {
       console.log(`Procesando examen: ${examenExterno.nombreMateria} - ${examenExterno.carrera}`);
       
-      // Buscar por nombre de materia y carrera
+      // Buscar por nombre de materia solamente (la carrera es código, no nombre)
       const matchPorNombre = await prisma.examenTotem.findFirst({
         where: {
-          AND: [
-            {
-              nombreMateria: {
-                contains: examenExterno.nombreMateria,
-                mode: 'insensitive'
-              }
-            },
-            {
-              carrera: {
-                nombre: {
-                  contains: examenExterno.carrera,
-                  mode: 'insensitive'
-                }
-              }
-            }
-          ]
+          nombreMateria: {
+            contains: examenExterno.nombreMateria,
+            mode: 'insensitive'
+          }
         },
         include: {
           aula: true,
@@ -113,8 +101,8 @@ router.get('/examenes/:dni', async (req, res) => {
             },
             carrera: {
               codigo: examenExterno.carrera,
-              nombre: matchPorNombre.carrera.nombre,
-              facultad: matchPorNombre.carrera.facultad.nombre
+              nombre: matchPorNombre.carrera?.nombre || 'No disponible',
+              facultad: matchPorNombre.carrera?.facultad?.nombre || 'No disponible'
             },
             fecha: matchPorNombre.fecha ? matchPorNombre.fecha.toISOString().split('T')[0] : null,
             hora: matchPorNombre.hora ? matchPorNombre.hora.toTimeString().split(' ')[0] : null,
@@ -134,7 +122,7 @@ router.get('/examenes/:dni', async (req, res) => {
           matchStatus: {
             found: true,
             source: 'name_match',
-            matchedBy: ['nombreMateria', 'carrera']
+            matchedBy: ['nombreMateria']
           }
         });
       } else {
@@ -206,7 +194,8 @@ router.get('/examenes/:dni', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Error interno del servidor',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: error.message,
+      stack: error.stack
     });
   }
 });
