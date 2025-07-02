@@ -1,5 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Configuración para despliegue estático (activado para export)
+  output: 'export',
+  trailingSlash: true,
+  basePath: '/proyectos-innovalab/backoffice',
+  assetPrefix: '/proyectos-innovalab/backoffice',
+  
   // Configuración mínima para API
   serverExternalPackages: ['@prisma/client'],
   
@@ -18,19 +24,19 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   
-  // Headers adicionales para desarrollo
-  async headers() {
-    return [
-      {
-        source: '/api/:path*',
-        headers: [
-          { key: 'Access-Control-Allow-Origin', value: '*' },
-          { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
-        ],
-      },
-    ];
-  },
+  // Headers no funcionan con export, comentados para build
+  // async headers() {
+  //   return [
+  //     {
+  //       source: '/api/:path*',
+  //       headers: [
+  //         { key: 'Access-Control-Allow-Origin', value: '*' },
+  //         { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
+  //         { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
+  //       ],
+  //     },
+  //   ];
+  // },
 };
 
 export default nextConfig; 

@@ -83,8 +83,18 @@ router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Validar que el ID sea un número válido
+    const examenId = parseInt(id);
+    if (isNaN(examenId) || examenId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID inválido',
+        message: `El ID del examen debe ser un número válido. Recibido: "${id}"`
+      });
+    }
+    
     const examen = await prisma.examen.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: examenId },
       include: {
         carrera: {
           include: {
@@ -105,7 +115,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({
         success: false,
         error: 'Examen no encontrado',
-        message: `No se encontró examen con ID ${id}`
+        message: `No se encontró examen con ID ${examenId}`
       });
     }
 
