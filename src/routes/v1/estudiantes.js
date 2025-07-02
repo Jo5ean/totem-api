@@ -64,8 +64,8 @@ router.get('/examenes/:dni', async (req, res) => {
     for (const examenExterno of examenesExternos) {
       console.log(`Procesando examen: ${examenExterno.nombreMateria} - ${examenExterno.carrera}`);
       
-      // Buscar por nombre de materia solamente (la carrera es código, no nombre)
-      const matchPorNombre = await prisma.examenTotem.findFirst({
+      // Buscar por nombre de materia con múltiples estrategias
+      let matchPorNombre = await prisma.examenTotem.findFirst({
         where: {
           materiaTotem: {
             contains: examenExterno.nombreMateria
@@ -84,6 +84,36 @@ router.get('/examenes/:dni', async (req, res) => {
           }
         }
       });
+
+      // Si no encuentra con el nombre completo, buscar por palabras clave
+      if (!matchPorNombre) {
+        const palabrasClave = examenExterno.nombreMateria.split(' ').filter(p => p.length > 3);
+        for (const palabra of palabrasClave) {
+          matchPorNombre = await prisma.examenTotem.findFirst({
+            where: {
+              materiaTotem: {
+                contains: palabra
+              }
+            },
+            include: {
+              examen: {
+                include: {
+                  aula: true,
+                  carrera: {
+                    include: {
+                      facultad: true
+                    }
+                  }
+                }
+              }
+            }
+          });
+          if (matchPorNombre) {
+            console.log(`Match encontrado por palabra clave: "${palabra}"`);
+            break;
+          }
+        }
+      }
 
       if (matchPorNombre) {
         examenesCompletos.push({
