@@ -378,138 +378,71 @@ class TotemService {
   }
 
   /**
-   * 🔍 VERIFICACIÓN EXHAUSTIVA DE DUPLICADOS - Compara TODAS las columnas del Excel
-   * Campos clave: TODAS las columnas relevantes normalizadas
+   * 🔍 VERIFICACIÓN SIMPLE Y ROBUSTA DE DUPLICADOS 
+   * Usa hash de campos clave para comparación rápida y confiable
    */
   async checkExamenDuplicate(totemData, carreraId) {
     try {
-      // 🔧 NORMALIZAR DATOS para comparación robusta
-      const normalize = (str) => {
-        if (!str) return '';
-        return str.toString().trim().toLowerCase().replace(/\s+/g, ' ');
+      // 🔧 Crear hash único de los datos principales
+      const createHash = (data) => {
+        const campos = [
+          data.sector?.toString().trim().toLowerCase(),
+          data.carrera?.toString().trim().toLowerCase(), 
+          data.materia?.toString().trim().toLowerCase(),
+          data.fecha?.toDateString(),
+          data.hora ? `${data.hora.getHours()}:${data.hora.getMinutes()}` : '',
+          data.tipoExamen?.toString().trim().toLowerCase(),
+          carreraId.toString()
+        ].filter(Boolean);
+        
+        return campos.join('|');
       };
 
-      const normalizedData = {
-        sector: normalize(totemData.sector),
-        carrera: normalize(totemData.carrera),
-        modo: normalize(totemData.modo),
-        areaTema: normalize(totemData.areaTema),
-        materia: normalize(totemData.materia),
-        nombreCorto: normalize(totemData.nombreCorto),
-        fecha: totemData.fecha ? totemData.fecha.toDateString() : '',
-        hora: totemData.hora ? `${totemData.hora.getHours()}:${totemData.hora.getMinutes()}` : '',
-        url: normalize(totemData.url),
-        catedra: normalize(totemData.catedra),
-        docente: normalize(totemData.docente),
-        tipoExamen: normalize(totemData.tipoExamen),
-        monitoreo: normalize(totemData.monitoreo),
-        control: normalize(totemData.control),
-        observaciones: normalize(totemData.observaciones),
-        materialPermitido: normalize(totemData.materialPermitido)
-      };
-
-      console.log(`🔍 Verificando duplicado EXHAUSTIVO: ${normalizedData.sector}/${normalizedData.carrera}/${normalizedData.materia} - ${normalizedData.fecha} ${normalizedData.hora}`);
+      const hashBuscado = createHash(totemData);
+      console.log(`🔍 Hash buscado: ${hashBuscado}`);
       
-      // 🎯 BÚSQUEDA EXHAUSTIVA: Buscar en examenTotem primero
-      const existingExamenTotem = await prisma.examenTotem.findFirst({
+      // 🎯 BÚSQUEDA DIRECTA: Obtener todos los exámenes de la misma carrera y fecha
+      const examenesExistentes = await prisma.examen.findMany({
         where: {
-          AND: [
-            { sectorTotem: { equals: normalizedData.sector, mode: 'insensitive' } },
-            { carreraTotem: { equals: normalizedData.carrera, mode: 'insensitive' } },
-            { materiaTotem: { equals: normalizedData.materia, mode: 'insensitive' } },
-            // Campos opcionales que pueden ser null
-            ...(normalizedData.areaTema ? [{ areaTemaTotem: { equals: normalizedData.areaTema, mode: 'insensitive' } }] : []),
-            ...(normalizedData.modo ? [{ modoTotem: { equals: normalizedData.modo, mode: 'insensitive' } }] : []),
-            ...(normalizedData.docente ? [{ docenteTotem: { equals: normalizedData.docente, mode: 'insensitive' } }] : []),
-            ...(normalizedData.url ? [{ urlTotem: { equals: normalizedData.url, mode: 'insensitive' } }] : []),
-            ...(normalizedData.catedra ? [{ catedraTotem: { equals: normalizedData.catedra, mode: 'insensitive' } }] : [])
-          ]
+          carreraId: carreraId,
+          fecha: totemData.fecha,
+          activo: true
         },
         include: {
-          examen: {
-            select: {
-              id: true,
-              fecha: true,
-              hora: true,
-              tipoExamen: true,
-              carreraId: true,
-              aulaId: true,
-              activo: true,
-              nombreMateria: true,
-              observaciones: true,
-              materialPermitido: true
-            }
-          }
+          examenTotem: true
         }
       });
 
-      if (existingExamenTotem?.examen) {
-        const examen = existingExamenTotem.examen;
+      console.log(`📊 Encontrados ${examenesExistentes.length} exámenes de la misma carrera y fecha`);
+
+      // 🔍 Comparar manualmente cada examen existente
+      for (const examen of examenesExistentes) {
+        if (!examen.examenTotem) continue;
+
+        const datosExistente = {
+          sector: examen.examenTotem.sectorTotem,
+          carrera: examen.examenTotem.carreraTotem,
+          materia: examen.examenTotem.materiaTotem,
+          fecha: examen.fecha,
+          hora: examen.hora,
+          tipoExamen: examen.tipoExamen
+        };
+
+        const hashExistente = createHash(datosExistente);
         
-        // 🎯 VERIFICACIÓN FINAL EXHAUSTIVA en tabla Examen
-        const fechaCoincide = examen.fecha.toDateString() === normalizedData.fecha;
-        const horaCoincide = examen.hora ? 
-          `${examen.hora.getHours()}:${examen.hora.getMinutes()}` === normalizedData.hora : 
-          !normalizedData.hora;
-        const tipoCoincide = normalize(examen.tipoExamen) === normalizedData.tipoExamen;
-        const carreraCoincide = examen.carreraId === carreraId;
-        const materiaCoincide = normalize(examen.nombreMateria) === normalizedData.materia || 
-                               normalize(examen.nombreMateria) === normalizedData.nombreCorto;
-        const observacionesCoinciden = normalize(examen.observaciones) === normalizedData.observaciones;
-        const materialCoincide = normalize(examen.materialPermitido) === normalizedData.materialPermitido;
-
-        // 📊 CRITERIO STRICT: TODOS los campos principales deben coincidir
-        const esIgual = fechaCoincide && horaCoincide && tipoCoincide && carreraCoincide && 
-                       materiaCoincide && observacionesCoinciden && materialCoincide && examen.activo;
-
-        if (esIgual) {
-          console.log(`🔴 DUPLICADO EXACTO DETECTADO: Examen ID ${examen.id} (ExamenTotem: ${existingExamenTotem.examenId})`);
-          console.log(`   📊 Comparación: fecha=${fechaCoincide}, hora=${horaCoincide}, tipo=${tipoCoincide}, carrera=${carreraCoincide}, materia=${materiaCoincide}`);
+        if (hashExistente === hashBuscado) {
+          console.log(`🔴 DUPLICADO DETECTADO: Examen ID ${examen.id}`);
+          console.log(`   Hash existente: ${hashExistente}`);
+          console.log(`   Hash buscado:   ${hashBuscado}`);
           return examen;
-        } else {
-          console.log(`⚠️  Registro similar pero NO idéntico: Examen ID ${examen.id}`);
-          console.log(`   📊 Diferencias: fecha=${fechaCoincide}, hora=${horaCoincide}, tipo=${tipoCoincide}, carrera=${carreraCoincide}, materia=${materiaCoincide}`);
         }
       }
 
-      // 🔍 BÚSQUEDA ADICIONAL: Verificar directamente en tabla Examen por si acaso
-      const directExamenMatch = await prisma.examen.findFirst({
-        where: {
-          AND: [
-            { carreraId: carreraId },
-            { fecha: totemData.fecha },
-            { activo: true },
-            {
-              OR: [
-                { nombreMateria: { equals: normalizedData.materia, mode: 'insensitive' } },
-                { nombreMateria: { equals: normalizedData.nombreCorto, mode: 'insensitive' } }
-              ]
-            },
-            // Solo verificar hora si está disponible
-            ...(totemData.hora ? [{ hora: totemData.hora }] : []),
-            // Solo verificar tipo si está disponible  
-            ...(normalizedData.tipoExamen ? [{ tipoExamen: { equals: normalizedData.tipoExamen, mode: 'insensitive' } }] : [])
-          ]
-        },
-        select: {
-          id: true,
-          fecha: true,
-          hora: true,
-          nombreMateria: true,
-          aulaId: true
-        }
-      });
-
-      if (directExamenMatch) {
-        console.log(`🔴 DUPLICADO DIRECTO DETECTADO en tabla Examen: ID ${directExamenMatch.id}`);
-        return directExamenMatch;
-      }
-
-      console.log(`✅ NO ES DUPLICADO - Creando nuevo examen para: ${normalizedData.sector}/${normalizedData.carrera}/${normalizedData.materia}`);
+      console.log(`✅ NO ES DUPLICADO - Hash único: ${hashBuscado}`);
       return null;
 
     } catch (error) {
-      console.error('❌ Error verificando duplicado de examen:', error);
+      console.error('❌ Error verificando duplicado:', error);
       return null;
     }
   }
