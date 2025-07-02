@@ -67,7 +67,7 @@ router.get('/examenes/:dni', async (req, res) => {
       // Buscar por nombre de materia solamente (la carrera es código, no nombre)
       const matchPorNombre = await prisma.examenTotem.findFirst({
         where: {
-          nombreMateria: {
+          materiaTotem: {
             contains: examenExterno.nombreMateria,
             mode: 'insensitive'
           }
