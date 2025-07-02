@@ -63,14 +63,14 @@ router.get('/examenes/:dni', async (req, res) => {
     
     for (const examenExterno of examenesExternos) {
       console.log(`\n🔍 PROCESANDO EXAMEN:`);
-      console.log(`   📚 Materia Externa: "${examenExterno.nombreMateria}"`);
-      console.log(`   🎓 Carrera: "${examenExterno.carrera}"`);
+      console.log(`   📚 Materia: "${examenExterno.nombreMateria}"`);
+      console.log(`   🔑 Códigos: M${examenExterno.materia}-C${examenExterno.carrera}-A${examenExterno.areaTema}`);
       console.log(`   📅 Fecha: "${examenExterno.fecActa}"`);
       
-      // 🎯 BÚSQUEDA EXACTA con clave compuesta (materia + carrera + areaTema)
+      // 🎯 BÚSQUEDA EXACTA por clave compuesta (materia + carrera + areaTema)
       console.log(`\n🔎 BÚSQUEDA 1 - Clave compuesta: materia="${examenExterno.materia}" + carrera="${examenExterno.carrera}" + areaTema="${examenExterno.areaTema}"`);
       
-      let matchPorNombre = await prisma.examenTotem.findFirst({
+      let matchExacto = await prisma.examenTotem.findFirst({
         where: {
           AND: [
             { materiaTotem: examenExterno.materia },
@@ -92,14 +92,15 @@ router.get('/examenes/:dni', async (req, res) => {
         }
       });
       
-      // Si encontró match en ExamenTotem, usar el examen asociado
-      if (matchPorNombre) {
-        matchPorNombre = matchPorNombre.examen;
+      let matchPorNombre = null;
+      if (matchExacto) {
+        matchPorNombre = matchExacto.examen;
         console.log(`   ✅ MATCH EXACTO por clave compuesta: "${matchPorNombre.nombreMateria}"`);
       } else {
-        console.log(`   ❌ No match con clave compuesta, probando por nombre...`);
+        console.log(`   ❌ No match con clave compuesta`);
         
-        // FALLBACK: Buscar por nombre de materia directamente en la tabla Examen
+        // FALLBACK: Buscar por nombre de materia como último recurso
+        console.log(`\n🔎 BÚSQUEDA 2 - Fallback por nombre: "${examenExterno.nombreMateria}"`);
         matchPorNombre = await prisma.examen.findFirst({
           where: {
             nombreMateria: {
@@ -118,17 +119,21 @@ router.get('/examenes/:dni', async (req, res) => {
       }
       
       if (matchPorNombre) {
-        console.log(`   ✅ MATCH ENCONTRADO: "${matchPorNombre.nombreMateria}"`);
+        if (matchExacto) {
+          console.log(`   ✅ MATCH EXACTO por clave compuesta encontrado`);
+        } else {
+          console.log(`   ⚠️ Match por nombre (fallback): "${matchPorNombre.nombreMateria}"`);
+        }
       } else {
         console.log(`   ❌ No se encontró match con ningún método`);
         
-        // 🔎 BÚSQUEDA 2: Solo por palabras clave como último recurso
-        console.log(`\n🔎 BÚSQUEDA 2 - Último recurso: Por palabras clave en nombre`);
+        // ÚLTIMO RECURSO: Buscar por palabras clave  
+        console.log(`\n🔎 BÚSQUEDA 3 - Último recurso por palabras clave:`);
         const palabrasClave = examenExterno.nombreMateria.split(' ').filter(p => p.length > 3);
-        console.log(`   🔤 Palabras clave: [${palabrasClave.join(', ')}]`);
+        console.log(`   🔤 Palabras: [${palabrasClave.join(', ')}]`);
         
         for (const palabra of palabrasClave) {
-          console.log(`\n   🔍 Probando palabra: "${palabra}"`);
+          console.log(`\n   🔍 Probando: "${palabra}"`);
           matchPorNombre = await prisma.examen.findFirst({
             where: {
               nombreMateria: {
@@ -145,17 +150,22 @@ router.get('/examenes/:dni', async (req, res) => {
             }
           });
           if (matchPorNombre) {
-            console.log(`   ⚠️ Match por palabra "${palabra}" (no exacto)`);
+            console.log(`   ⚠️ Match parcial por palabra "${palabra}"`);
             console.log(`   📝 "${examenExterno.nombreMateria}" → "${matchPorNombre.nombreMateria}"`);
             break;
           }
+        }
+        
+        if (!matchPorNombre) {
+          console.log(`\n❌ RESULTADO FINAL: Sin matches para "${examenExterno.nombreMateria}"`);
         }
       }
 
       console.log(`\n📊 RESULTADO PROCESAMIENTO:`);
       
       if (matchPorNombre) {
-        console.log(`✅ MATCH EXITOSO - Examen encontrado con clave compuesta`);
+        const tipoMatch = matchExacto ? 'EXACTO' : 'FALLBACK';
+        console.log(`✅ MATCH ${tipoMatch} - Examen encontrado con datos locales`);
         console.log(`   🎯 ExamenID: ${matchPorNombre.id}`);
         console.log(`   🔑 Clave: M${examenExterno.materia}-C${examenExterno.carrera}-A${examenExterno.areaTema}`);
         console.log(`   📚 "${examenExterno.nombreMateria}" → "${matchPorNombre.nombreMateria}"`);
@@ -198,13 +208,14 @@ router.get('/examenes/:dni', async (req, res) => {
           },
           matchStatus: {
             found: true,
-            source: 'exact_match',
-            matchedBy: ['materia', 'carrera', 'areaTema']
+            source: matchExacto ? 'exact_key_match' : 'fallback_name_match',
+            matchedBy: matchExacto ? ['materia', 'carrera', 'areaTema'] : ['nombreMateria']
           }
         });
       } else {
-        console.log(`❌ SIN MATCH - Agregando solo datos de API externa`);
-        console.log(`   📚 Solo con fecha de API: "${examenExterno.fecActa}"`);
+        console.log(`❌ SIN MATCH - Solo datos externos disponibles`);
+        console.log(`   🔑 Clave buscada: M${examenExterno.materia}-C${examenExterno.carrera}-A${examenExterno.areaTema}`);
+        console.log(`   📅 Solo fecha externa: "${examenExterno.fecActa}"`);
         
         // No se encontró match, pero incluir datos básicos de la API externa
         examenesCompletos.push({
@@ -233,7 +244,8 @@ router.get('/examenes/:dni', async (req, res) => {
           matchStatus: {
             found: false,
             source: 'external_only',
-            message: 'Examen registrado solo en sistema externo'
+            searchedBy: ['materia', 'carrera', 'areaTema', 'nombreMateria'],
+            message: 'No encontrado en base de datos local con clave compuesta ni por nombre'
           }
         });
       }
@@ -250,8 +262,9 @@ router.get('/examenes/:dni', async (req, res) => {
     console.log(`\n🎯 RESUMEN FINAL:`);
     console.log(`   👤 Estudiante: ${estudianteInfo.nombre}`);
     console.log(`   📊 Total exámenes: ${examenesCompletos.length}`);
-    console.log(`   ✅ Exámenes con match local: ${examenesEncontrados}`);
-    console.log(`   📅 Solo fecha externa: ${examenesCompletos.length - examenesEncontrados}`);
+    console.log(`   ✅ Matches por clave compuesta: ${examenesCompletos.filter(e => e.matchStatus.source === 'exact_key_match').length}`);
+    console.log(`   ⚠️ Matches por fallback: ${examenesCompletos.filter(e => e.matchStatus.source === 'fallback_name_match').length}`);
+    console.log(`   ❌ Solo datos externos: ${examenesCompletos.length - examenesEncontrados}`);
 
     return res.status(200).json({
       success: true,
@@ -268,10 +281,12 @@ router.get('/examenes/:dni', async (req, res) => {
           totalRespuesta: examenesExternos.length
         },
         matches: examenesCompletos.map(item => ({
-          materia: item.examen.materia.codigo,
-          carrera: item.examen.carrera.codigo,
+          materia: item.examen.materia?.codigo,
+          carrera: item.examen.carrera?.codigo,
+          areaTema: item.examen.materia?.areaTema,
           found: item.matchStatus.found,
-          source: item.matchStatus.source
+          source: item.matchStatus.source,
+          matchedBy: item.matchStatus.matchedBy || item.matchStatus.searchedBy
         }))
       }
     });
