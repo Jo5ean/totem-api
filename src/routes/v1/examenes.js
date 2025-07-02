@@ -83,6 +83,16 @@ router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     
+    // Excluir rutas específicas que no son IDs
+    const rutasEspeciales = ['por-fecha', 'asignacion-masiva', 'inscripciones', 'sincronizar-inscripciones'];
+    if (rutasEspeciales.includes(id)) {
+      return res.status(404).json({
+        success: false,
+        error: 'Ruta no encontrada en este router',
+        message: `La ruta "/examenes/${id}" debe ser manejada por otro endpoint`
+      });
+    }
+    
     // Validar que el ID sea un número válido
     const examenId = parseInt(id);
     if (isNaN(examenId) || examenId <= 0) {
