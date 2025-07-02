@@ -1,6 +1,7 @@
 import express from 'express';
 import TotemService from '../../services/totemService.js';
 import SheetBestService from '../../services/sheetBestService.js';
+import prisma from '../../lib/db.js';
 
 const router = express.Router();
 const totemService = new TotemService();
@@ -212,6 +213,65 @@ router.get('/consulta', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Error en consulta',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/v1/totem/aplicar-mapeos-carreras - Aplicar mapeos específicos de carreras
+router.post('/aplicar-mapeos-carreras', async (req, res) => {
+  try {
+    console.log('🚀 Aplicando mapeos de carreras...');
+    
+    // Mapeos críticos que necesitamos
+    const mapeosCriticos = [
+      { codigo: '16', nombre: 'Abogacía' },
+      { codigo: '88', nombre: 'Tecnicatura Univ. en Gestión de Bancos y Empresas Financieras' },
+      { codigo: '17', nombre: 'Licenciatura en Relaciones Internacionales' },
+      { codigo: '96', nombre: 'Tecnicatura Universitaria en Gestión de Calidad' },
+      { codigo: '97', nombre: 'Tecnicatura Universitaria en Seguros' }
+    ];
+    
+    let mapeosAplicados = 0;
+    
+    for (const mapeo of mapeosCriticos) {
+      // 1. Buscar si existe la carrera con ese código
+      const carreraExistente = await prisma.carrera.findFirst({
+        where: { codigo: mapeo.codigo }
+      });
+      
+      if (carreraExistente) {
+        // 2. Actualizar el nombre si es diferente
+        if (carreraExistente.nombre !== mapeo.nombre) {
+          await prisma.carrera.update({
+            where: { id: carreraExistente.id },
+            data: { nombre: mapeo.nombre }
+          });
+          
+          console.log(`✅ Actualizada carrera código "${mapeo.codigo}": "${carreraExistente.nombre}" → "${mapeo.nombre}"`);
+          mapeosAplicados++;
+        } else {
+          console.log(`✓ Carrera código "${mapeo.codigo}" ya tiene el nombre correcto: "${mapeo.nombre}"`);
+        }
+      } else {
+        console.log(`❌ No se encontró carrera con código "${mapeo.codigo}"`);
+      }
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: `Mapeos de carreras aplicados exitosamente`,
+      data: {
+        mapeosAplicados,
+        totalProcesados: mapeosCriticos.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error aplicando mapeos de carreras:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error aplicando mapeos de carreras',
       message: error.message
     });
   }
