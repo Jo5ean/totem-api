@@ -73,10 +73,14 @@ router.get('/examenes/:dni', async (req, res) => {
           }
         },
         include: {
-          aula: true,
-          carrera: {
+          examen: {
             include: {
-              facultad: true
+              aula: true,
+              carrera: {
+                include: {
+                  facultad: true
+                }
+              }
             }
           }
         }
@@ -92,32 +96,32 @@ router.get('/examenes/:dni', async (req, res) => {
             modo: examenExterno.nombreModo
           },
           examen: {
-            id: matchPorNombre.id,
+            id: matchPorNombre.examen.id,
             materia: {
               codigo: examenExterno.materia,
               nombre: examenExterno.nombreMateria,
-              nombreCorto: matchPorNombre.nombreMateria,
+              nombreCorto: matchPorNombre.examen.nombreMateria,
               areaTema: examenExterno.areaTema
             },
             carrera: {
               codigo: examenExterno.carrera,
-              nombre: matchPorNombre.carrera?.nombre || 'No disponible',
-              facultad: matchPorNombre.carrera?.facultad?.nombre || 'No disponible'
+              nombre: matchPorNombre.examen.carrera?.nombre || 'No disponible',
+              facultad: matchPorNombre.examen.carrera?.facultad?.nombre || 'No disponible'
             },
-            fecha: matchPorNombre.fecha ? matchPorNombre.fecha.toISOString().split('T')[0] : null,
-            hora: matchPorNombre.hora ? matchPorNombre.hora.toTimeString().split(' ')[0] : null,
+            fecha: matchPorNombre.examen.fecha ? matchPorNombre.examen.fecha.toISOString().split('T')[0] : null,
+            hora: matchPorNombre.examen.hora ? matchPorNombre.examen.hora.toTimeString().split(' ')[0] : null,
             fechaExterna: examenExterno.fecActa,
-            aula: matchPorNombre.aula ? {
-              id: matchPorNombre.aula.id,
-              nombre: matchPorNombre.aula.nombre,
-              capacidad: matchPorNombre.aula.capacidad,
-              ubicacion: matchPorNombre.aula.ubicacion
+            aula: matchPorNombre.examen.aula ? {
+              id: matchPorNombre.examen.aula.id,
+              nombre: matchPorNombre.examen.aula.nombre,
+              capacidad: matchPorNombre.examen.aula.capacidad,
+              ubicacion: matchPorNombre.examen.aula.ubicacion
             } : null,
-            tipoExamen: matchPorNombre.tipoExamen || 'No especificado',
-            modalidad: matchPorNombre.modalidadExamen || 'presencial',
-            observaciones: matchPorNombre.observaciones,
-            materialPermitido: matchPorNombre.materialPermitido,
-            requierePc: matchPorNombre.requierePc || false
+            tipoExamen: matchPorNombre.examen.tipoExamen || 'No especificado',
+            modalidad: matchPorNombre.examen.modalidadExamen || 'presencial',
+            observaciones: matchPorNombre.examen.observaciones,
+            materialPermitido: matchPorNombre.examen.materialPermitido,
+            requierePc: matchPorNombre.examen.requierePc || false
           },
           matchStatus: {
             found: true,
