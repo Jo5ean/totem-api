@@ -1,18 +1,12 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Configuración para despliegue estático (activado para export)
-  output: 'export',
-  trailingSlash: true,
-  basePath: '/proyectos-innovalab/backoffice',
-  assetPrefix: '/proyectos-innovalab/backoffice',
+  // Configuración para API server (NO export estático)
+  // output: 'export', // ❌ REMOVIDO: Desactiva las API routes
   
-  // Configuración mínima para API
+  // Configuración para servidor API
   serverExternalPackages: ['@prisma/client'],
   
-  // Deshabilitar optimizaciones de frontend
-  images: {
-    unoptimized: true,
-  },
+  // Optimizaciones para API
   eslint: {
     dirs: ['src'],
     // Ignorar errores de ESLint durante build para Railway
@@ -24,19 +18,26 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   
-  // Headers no funcionan con export, comentados para build
-  // async headers() {
-  //   return [
-  //     {
-  //       source: '/api/:path*',
-  //       headers: [
-  //         { key: 'Access-Control-Allow-Origin', value: '*' },
-  //         { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
-  //         { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
-  //       ],
-  //     },
-  //   ];
-  // },
+  // Headers CORS para API
+  async headers() {
+    return [
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'Access-Control-Allow-Origin', value: '*' },
+          { key: 'Access-Control-Allow-Methods', value: 'GET,DELETE,PATCH,POST,PUT,OPTIONS' },
+          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, Authorization, X-Requested-With' },
+        ],
+      },
+    ];
+  },
+  
+  // Configuración experimental para API routes
+  experimental: {
+    serverActions: {
+      bodySizeLimit: '10mb'
+    }
+  }
 };
 
 export default nextConfig; 
