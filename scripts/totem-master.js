@@ -83,7 +83,7 @@ async function paso1_LimpiarBaseDatos() {
   console.log('🗑️  Eliminando datos previos...');
   
   await prisma.examenTotem.deleteMany({});
-  await prisma.examen.deleteMany({});
+  await prisma.examen.deleteMany({}); // 🚀 LIMPIAR EXÁMENES PREVIOS
   await prisma.carreraTotem.deleteMany({});
   await prisma.sectorFacultad.deleteMany({});
   await prisma.aulaConfiguracion.deleteMany({});
@@ -97,7 +97,7 @@ async function paso1_LimpiarBaseDatos() {
     }
   });
   
-  console.log('✅ Base de datos limpia');
+  console.log('✅ Base de datos limpia (incluyendo exámenes)');
 }
 
 // ==========================================
@@ -248,17 +248,8 @@ async function paso5_SincronizarCompleto() {
         console.log(`✅ ${mapeoData.data.carrerasCreadas} carreras creadas`);
         console.log(`✅ ${mapeoData.data.carrerasMapeadas} carreras mapeadas`);
         
-        // Re-sincronizar con todas las carreras mapeadas
-        console.log('\n🔄 Re-sincronizando con carreras completas...');
-        const resyncResponse = await fetch('http://localhost:3000/api/v1/totem/simple-sync', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-        
-        if (resyncResponse.ok) {
-          const resyncData = await resyncResponse.json();
-          console.log(`✅ ${resyncData.data.examensCreated} exámenes finales creados`);
-        }
+        // ❌ ELIMINADA RE-SINCRONIZACIÓN para evitar duplicados
+        console.log('ℹ️  Mapeos completados, no se re-sincroniza para evitar duplicados');
       }
       
     } else {
