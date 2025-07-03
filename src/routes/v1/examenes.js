@@ -83,17 +83,20 @@ router.get('/por-fecha', async (req, res) => {
   try {
     const { soloSinAula, soloConAula, fechaDesde, fechaHasta } = req.query;
     
+    // APLICAR FILTRO DESDE HOY EN ADELANTE por defecto
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Desde inicio del día de hoy
+    
     // Construir filtros
     const where = {
       activo: true,
+      // ✅ FILTRO CRÍTICO: Solo exámenes desde hoy en adelante
+      fecha: { 
+        gte: fechaDesde ? new Date(fechaDesde) : hoy,
+        ...(fechaHasta && { lte: new Date(fechaHasta) })
+      },
       ...(soloSinAula === 'true' && { aulaId: null }),
-      ...(soloConAula === 'true' && { aulaId: { not: null } }),
-      ...(fechaDesde && {
-        fecha: { gte: new Date(fechaDesde) }
-      }),
-      ...(fechaHasta && {
-        fecha: { lte: new Date(fechaHasta) }
-      })
+      ...(soloConAula === 'true' && { aulaId: { not: null } })
     };
     
     // Obtener exámenes
@@ -137,7 +140,8 @@ router.get('/por-fecha', async (req, res) => {
       
       grupos[fechaStr].push({
         id: examen.id,
-        nombre: examen.examenTotem?.materiaTotem || examen.nombre || 'Examen sin nombre',
+        nombre: examen.nombreMateria || `Materia ${examen.examenTotem?.materiaTotem}` || 'Examen sin nombre',
+        codigoMateria: examen.examenTotem?.materiaTotem || null,
         hora: examen.hora ? examen.hora.toTimeString().slice(0, 5) : null,
         carrera: {
           codigo: examen.carrera.codigo,
@@ -145,7 +149,7 @@ router.get('/por-fecha', async (req, res) => {
           facultad: examen.carrera.facultad?.nombre || 'Sin facultad'
         },
         aula: examen.aula,
-        codigoMateria: examen.codigoMateria,
+        cantidadInscriptos: examen.cantidadInscriptos || 0,
         necesitaAsignacion: !examen.aulaId
       });
       
@@ -185,76 +189,8 @@ router.get('/por-fecha', async (req, res) => {
   }
 });
 
-// GET /api/v1/examenes/:id/inscripciones - Obtener inscripciones de un examen  
-router.get('/:id/inscripciones', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Validar ID del examen
-    const examenId = parseInt(id);
-    if (isNaN(examenId) || examenId <= 0) {
-      return res.status(400).json({
-        success: false,
-        error: 'ID inválido',
-        message: `El ID del examen debe ser un número válido. Recibido: "${id}"`
-      });
-    }
-    
-    // Verificar que el examen existe
-    const examen = await prisma.examen.findUnique({
-      where: { id: examenId },
-      include: {
-        carrera: {
-          include: { facultad: true }
-        },
-        examenTotem: true
-      }
-    });
-    
-    if (!examen) {
-      return res.status(404).json({
-        success: false,
-        error: 'Examen no encontrado',
-        message: `No se encontró examen con ID ${examenId}`
-      });
-    }
-    
-    // Por ahora retornamos datos simulados ya que no tenemos API externa real
-    // En el futuro, aquí se haría la consulta a la API externa de UCASAL
-    const inscriptosMock = [
-      { dni: '12345678', nombre: 'Juan', apellido: 'Pérez' },
-      { dni: '87654321', nombre: 'María', apellido: 'González' },
-      { dni: '11223344', nombre: 'Carlos', apellido: 'Rodriguez' }
-    ];
-    
-    return res.status(200).json({
-      success: true,
-      message: 'Inscripciones obtenidas exitosamente',
-      data: {
-        examen: {
-          id: examen.id,
-          nombre: examen.examenTotem?.materiaTotem || examen.nombre,
-          fecha: examen.fecha,
-          hora: examen.hora,
-          carrera: examen.carrera.nombre,
-          facultad: examen.carrera.facultad?.nombre
-        },
-        inscriptos: inscriptosMock,
-        cantidadInscriptos: inscriptosMock.length,
-        fechaConsulta: new Date().toISOString(),
-        nota: 'Datos simulados - En producción se consultará la API externa de UCASAL'
-      }
-    });
-    
-  } catch (error) {
-    console.error('Error obteniendo inscripciones:', error);
-    return res.status(500).json({
-      success: false,
-      error: 'Error obteniendo inscripciones',
-      message: error.message
-    });
-  }
-});
+// ❌ ENDPOINT ELIMINADO: Las inscripciones se manejan en src/pages/api/v1/examenes/[id]/inscripciones.js
+// Este endpoint MOCK interfería con la consulta real a la API de UCASAL que aplica filtro LUGAR = 3
 
 // POST /api/v1/examenes/:id/asignar-aula - Asignar aula a un examen
 router.post('/:id/asignar-aula', async (req, res) => {
