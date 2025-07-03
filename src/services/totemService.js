@@ -490,19 +490,35 @@ class TotemService {
       });
       
       if (!carreraExistente || !carreraExistente.esMapeada) {
-        // Crear carrera genérica si no existe
-        const nuevaCarrera = await prisma.carrera.create({
-          data: {
-            nombre: `Carrera ${carreraCode}`,
+        // Buscar si ya existe una carrera con este código en la BD
+        const carreraEnBD = await prisma.carrera.findFirst({
+          where: { 
             codigo: carreraCode.substring(0, 10),
-            facultadId: 1, // Facultad por defecto
-            activa: true
+            facultadId: 1
           }
         });
         
-        await this.mapCarreraTotemToCarrera(carreraCode, nuevaCarrera.id);
+        let carreraId;
+        if (carreraEnBD) {
+          // Usar carrera existente
+          carreraId = carreraEnBD.id;
+          console.log(`   🔗 Carrera "${carreraCode}" → Carrera existente "${carreraEnBD.nombre}"`);
+        } else {
+          // Crear nueva carrera solo si no existe
+          const nuevaCarrera = await prisma.carrera.create({
+            data: {
+              nombre: `Carrera ${carreraCode}`,
+              codigo: carreraCode.substring(0, 10),
+              facultadId: 1, // Facultad por defecto
+              activa: true
+            }
+          });
+          carreraId = nuevaCarrera.id;
+          console.log(`   🆕 Carrera "${carreraCode}" → Nueva Carrera "${nuevaCarrera.nombre}"`);
+        }
+        
+        await this.mapCarreraTotemToCarrera(carreraCode, carreraId);
         carrerasMapeadas++;
-        console.log(`   🆕 Carrera "${carreraCode}" → Nueva Carrera "${nuevaCarrera.nombre}"`);
       }
     }
     
