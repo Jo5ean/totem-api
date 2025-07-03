@@ -189,8 +189,238 @@ router.get('/por-fecha', async (req, res) => {
   }
 });
 
-// ❌ ENDPOINT ELIMINADO: Las inscripciones se manejan en src/pages/api/v1/examenes/[id]/inscripciones.js
-// Este endpoint MOCK interfería con la consulta real a la API de UCASAL que aplica filtro LUGAR = 3
+// GET /api/v1/examenes/:id/inscripciones - Obtener inscripciones REALES con filtro LUGAR = 3
+router.get('/:id/inscripciones', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validar ID del examen
+    const examenId = parseInt(id);
+    if (isNaN(examenId) || examenId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID inválido',
+        message: `El ID del examen debe ser un número válido. Recibido: "${id}"`
+      });
+    }
+    
+    // 1. Buscar el examen en la base de datos local
+    const examen = await prisma.examen.findUnique({
+      where: { id: examenId },
+      include: {
+        carrera: {
+          include: { facultad: true }
+        },
+        aula: true,
+        examenTotem: true
+      }
+    });
+
+    if (!examen) {
+      return res.status(404).json({
+        success: false,
+        error: 'Examen no encontrado'
+      });
+    }
+
+    // 2. Obtener datos del TOTEM para materia y areaTema
+    let codigoMateria = null;
+    let areaTema = null;
+    let carreraTotem = null;
+    
+    if (examen.examenTotem) {
+      codigoMateria = examen.examenTotem.materiaTotem;
+      areaTema = examen.examenTotem.areaTemaTotem;
+      carreraTotem = examen.examenTotem.carreraTotem;
+    }
+
+    if (!codigoMateria) {
+      return res.status(404).json({
+        success: false,
+        error: 'No se encontró código de materia para consultar inscriptos',
+        data: {
+          examen: {
+            id: examen.id,
+            nombre: examen.nombreMateria,
+            fecha: examen.fecha,
+            hora: examen.hora,
+            cantidadInscriptos: examen.cantidadInscriptos || 0
+          }
+        }
+      });
+    }
+
+    console.log(`📡 Consultando materia ${codigoMateria} con areaTema ${areaTema} y carrera ${carreraTotem}`);
+
+    // 3. Consultar inscriptos desde API externa de UCASAL
+    const fechaDesde = new Date().toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit', 
+      year: 'numeric'
+    });
+    
+    const fechaHasta = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+
+    const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
+    
+    console.log(`🌐 Consultando API: ${apiUrl}`);
+    
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      console.warn(`⚠️ API externa no disponible: ${response.status}`);
+      return res.status(200).json({
+        success: false,
+        error: 'API externa no disponible',
+        data: {
+          examen: {
+            id: examen.id,
+            nombre: examen.nombreMateria,
+            fecha: examen.fecha?.toISOString().split('T')[0],
+            hora: examen.hora?.toTimeString().split(' ')[0],
+            carrera: {
+              nombre: examen.carrera.nombre,
+              facultad: examen.carrera.facultad.nombre
+            }
+          },
+          inscriptos: [],
+          cantidadInscriptos: examen.cantidadInscriptos || 0,
+          apiExternaDisponible: false
+        }
+      });
+    }
+
+    const datosCompletos = await response.json();
+    
+    if (!Array.isArray(datosCompletos)) {
+      console.warn('Respuesta de API externa no es un array:', datosCompletos);
+      return res.status(200).json({
+        success: true,
+        data: {
+          examen: {
+            id: examen.id,
+            nombre: examen.nombreMateria,
+            fecha: examen.fecha?.toISOString().split('T')[0],
+            hora: examen.hora?.toTimeString().split(' ')[0],
+            carrera: {
+              nombre: examen.carrera.nombre,
+              facultad: examen.carrera.facultad.nombre
+            }
+          },
+          inscriptos: [],
+          cantidadInscriptos: 0,
+          apiExternaDisponible: true
+        }
+      });
+    }
+
+    // 4. FILTRAR CORRECTAMENTE por areaTema y carrera
+    console.log(`🔍 Aplicando filtro: areaTema=${areaTema} && carrera=${carreraTotem}`);
+    
+    const inscriptosFiltrados = datosCompletos.filter(registro => {
+      const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
+      const cumpleCarrera = carreraTotem ? registro.carrera == carreraTotem : true;
+      const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
+      
+      return cumpleAreaTema && cumpleCarrera && tieneAlumnos;
+    });
+
+    console.log(`✅ Después del filtro: ${inscriptosFiltrados.length} registros válidos`);
+
+    // 5. Extraer todos los alumnos de los registros filtrados
+    let todosLosInscriptos = [];
+    inscriptosFiltrados.forEach(registro => {
+      if (registro.alumnos && Array.isArray(registro.alumnos)) {
+        todosLosInscriptos = todosLosInscriptos.concat(registro.alumnos);
+      }
+    });
+
+    console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
+
+    // 6. 🎯 FILTRO CRÍTICO: ÚNICAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
+    const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
+      const esLugarTres = inscripto.lugar === "3";
+      
+      console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", nombreLugar="${inscripto.nombreLugar}", cumpleFiltro=${esLugarTres}`);
+      
+      return esLugarTres;
+    });
+
+    console.log(`🎓 Inscriptos con LUGAR=3: ${inscriptosVirtuales.length} de ${todosLosInscriptos.length} totales`);
+
+    // 7. Formatear inscriptos virtuales
+    const inscriptosFormateados = inscriptosVirtuales.map(inscripto => ({
+      dni: inscripto.ndocu,
+      nombre: inscripto.apen,
+      lugar: inscripto.nombreLugar,
+      sector: inscripto.nombreSector,
+      modo: inscripto.nombreModo,
+      fechaInscripcion: inscripto.fecActa
+    }));
+
+    // 8. GUARDAR cantidad de inscriptos virtuales en la base de datos
+    try {
+      await prisma.examen.update({
+        where: { id: examenId },
+        data: {
+          cantidadInscriptos: inscriptosVirtuales.length,
+          fechaUltConsulta: new Date()
+        }
+      });
+      console.log(`💾 Guardado: ${inscriptosVirtuales.length} inscriptos virtuales para examen ${id}`);
+    } catch (updateError) {
+      console.error('Error actualizando cantidad de inscriptos:', updateError);
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        examen: {
+          id: examen.id,
+          nombre: examen.nombreMateria,
+          fecha: examen.fecha?.toISOString().split('T')[0],
+          hora: examen.hora?.toTimeString().split(' ')[0],
+          carrera: {
+            nombre: examen.carrera.nombre,
+            facultad: examen.carrera.facultad.nombre
+          },
+          aula: examen.aula ? {
+            id: examen.aula.id,
+            nombre: examen.aula.nombre,
+            capacidad: examen.aula.capacidad
+          } : null,
+          codigoMateria: codigoMateria,
+          areaTema: areaTema,
+          carreraTotem: carreraTotem
+        },
+        inscriptos: inscriptosFormateados,
+        cantidadInscriptos: inscriptosVirtuales.length,
+        apiExternaDisponible: true,
+        filtrosAplicados: {
+          codigoMateria: codigoMateria,
+          areaTema: areaTema,
+          carrera: carreraTotem,
+          lugarFiltrado: "3 (SALTA - DISTANCIA)",
+          fechaDesde,
+          fechaHasta
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error consultando inscriptos:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Error consultando inscriptos desde API externa',
+      message: error.message
+    });
+  }
+});
 
 // POST /api/v1/examenes/:id/asignar-aula - Asignar aula a un examen
 router.post('/:id/asignar-aula', async (req, res) => {
