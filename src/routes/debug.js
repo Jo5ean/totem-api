@@ -514,4 +514,175 @@ router.post('/corregir-carreras', async (req, res) => {
   }
 });
 
+// GET /api/debug/mapeos-sectores - Diagnóstico de mapeos de sectores
+router.get('/mapeos-sectores', async (req, res) => {
+  try {
+    console.log('🔍 Diagnosticando mapeos de sectores...');
+    
+    // 1. Obtener facultades disponibles
+    const facultades = await prisma.facultad.findMany({
+      orderBy: { codigo: 'asc' }
+    });
+    
+    // 2. Obtener mapeos actuales
+    const mapeosSectorFacultad = await prisma.sectorFacultad.findMany({
+      include: { facultad: true },
+      orderBy: { sector: 'asc' }
+    });
+    
+    // 3. Obtener mapeos en tabla sectorTotem (si existen)
+    let mapeosSectorTotem = [];
+    try {
+      mapeosSectorTotem = await prisma.sectorTotem.findMany({
+        include: { facultad: true },
+        orderBy: { sector: 'asc' }
+      });
+    } catch (error) {
+      // Tabla puede no existir
+    }
+    
+    // 4. Mapeos esperados
+    const mapeosEsperados = {
+      '2': 'CEA',  // Ciencias Económicas
+      '3': 'CJ',   // Ciencias Jurídicas  
+      '4': 'ING',  // Ingeniería
+      '5': 'ARQ',  // Arquitectura
+      '7': 'CECS', // Ciencias Económicas 
+      '8': 'CS',   // Ciencias Sociales
+      '21': 'EE'   // Educación
+    };
+    
+    // 5. Verificar problemas
+    const problemas = [];
+    for (const [sector, codigoEsperado] of Object.entries(mapeosEsperados)) {
+      const facultadEsperada = facultades.find(f => f.codigo === codigoEsperado);
+      const mapeoActual = mapeosSectorFacultad.find(m => m.sector === sector);
+      
+      if (!mapeoActual) {
+        problemas.push({
+          sector,
+          problema: 'NO_MAPEADO',
+          codigoEsperado,
+          facultadEsperada: facultadEsperada?.nombre || 'No encontrada'
+        });
+      } else if (mapeoActual.facultad.codigo !== codigoEsperado) {
+        problemas.push({
+          sector,
+          problema: 'MAL_MAPEADO',
+          codigoEsperado,
+          codigoActual: mapeoActual.facultad.codigo,
+          facultadEsperada: facultadEsperada?.nombre || 'No encontrada',
+          facultadActual: mapeoActual.facultad.nombre
+        });
+      }
+    }
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        facultades: facultades.map(f => ({ id: f.id, nombre: f.nombre, codigo: f.codigo })),
+        mapeosSectorFacultad,
+        mapeosSectorTotem,
+        mapeosEsperados,
+        problemas,
+        resumen: {
+          totalFacultades: facultades.length,
+          totalMapeosSF: mapeosSectorFacultad.length,
+          totalMapeosST: mapeosSectorTotem.length,
+          problemasEncontrados: problemas.length
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error diagnosticando mapeos:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error diagnosticando mapeos de sectores',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/debug/corregir-mapeo-sector3 - Corregir específicamente el sector 3
+router.post('/corregir-mapeo-sector3', async (req, res) => {
+  try {
+    console.log('🔧 Corrigiendo mapeo del sector 3...');
+    
+    // 1. Buscar facultad de Ciencias Jurídicas
+    const facultadCJ = await prisma.facultad.findFirst({
+      where: { 
+        OR: [
+          { codigo: 'CJ' },
+          { codigo: 'JURIDICAS' },
+          { nombre: { contains: 'JURÍDIC' } },
+          { nombre: { contains: 'DERECHO' } }
+        ]
+      }
+    });
+    
+    if (!facultadCJ) {
+      return res.status(404).json({
+        success: false,
+        error: 'Facultad de Ciencias Jurídicas no encontrada',
+        message: 'Necesita existir una facultad con código CJ o nombre que contenga JURÍDIC'
+      });
+    }
+    
+    // 2. Corregir mapeo en sectorFacultad
+    const mapeoCorregido = await prisma.sectorFacultad.upsert({
+      where: { sector: '3' },
+      update: { 
+        facultadId: facultadCJ.id,
+        activo: true 
+      },
+      create: {
+        sector: '3',
+        facultadId: facultadCJ.id,
+        activo: true
+      },
+      include: { facultad: true }
+    });
+    
+    // 3. Si existe sectorTotem, corregir también
+    try {
+      await prisma.sectorTotem.upsert({
+        where: { sector: '3' },
+        update: { 
+          facultadId: facultadCJ.id,
+          activo: true 
+        },
+        create: {
+          sector: '3',
+          facultadId: facultadCJ.id,
+          activo: true
+        }
+      });
+    } catch (error) {
+      // Tabla puede no existir, no es crítico
+    }
+    
+    console.log(`✅ Sector 3 corregido: ${mapeoCorregido.facultad.nombre}`);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Sector 3 corregido exitosamente',
+      data: {
+        sector: '3',
+        facultadAnterior: 'Ciencias Económicas (incorrecto)',
+        facultadCorrecta: mapeoCorregido.facultad.nombre,
+        mapeo: mapeoCorregido
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error corrigiendo sector 3:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error corrigiendo mapeo del sector 3',
+      message: error.message
+    });
+  }
+});
+
 export default router; 

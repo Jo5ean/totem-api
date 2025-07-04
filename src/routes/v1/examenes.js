@@ -551,7 +551,11 @@ router.post('/:id/asignar-aula', async (req, res) => {
       });
     }
     
-    // Asignar el aula al examen
+    // Determinar si es asignación nueva o cambio
+    const esReasignacion = !!examen.aulaId;
+    const aulaAnterior = examen.aula;
+    
+    // Asignar/cambiar el aula al examen
     const examenActualizado = await prisma.examen.update({
       where: { id: examenId },
       data: {
@@ -566,15 +570,20 @@ router.post('/:id/asignar-aula', async (req, res) => {
       }
     });
     
-    console.log(`✅ Aula asignada: Examen ${examenId} → Aula ${aulaId} (${aula.nombre})`);
+    const mensaje = esReasignacion 
+      ? `Aula cambiada de "${aulaAnterior?.nombre}" a "${aula.nombre}"`
+      : `Aula "${aula.nombre}" asignada exitosamente`;
+    
+    console.log(`✅ ${esReasignacion ? 'Cambio' : 'Asignación'}: Examen ${examenId} → ${aula.nombre}`);
     
     return res.status(200).json({
       success: true,
-      message: `Aula "${aula.nombre}" asignada exitosamente al examen`,
+      message: mensaje,
       data: {
         examen: examenActualizado,
         asignacion: {
-          aulaAnterior: examen.aula,
+          tipo: esReasignacion ? 'CAMBIO' : 'NUEVA',
+          aulaAnterior: aulaAnterior,
           aulaNueva: aula,
           fechaAsignacion: new Date().toISOString()
         }
@@ -586,6 +595,125 @@ router.post('/:id/asignar-aula', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Error asignando aula',
+      message: error.message
+    });
+  }
+});
+
+// PUT /api/v1/examenes/:id/cambiar-aula - Endpoint específico para cambiar aulas
+router.put('/:id/cambiar-aula', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { aulaId, motivo } = req.body;
+    
+    // Validar ID del examen
+    const examenId = parseInt(id);
+    if (isNaN(examenId) || examenId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID inválido',
+        message: `El ID del examen debe ser un número válido. Recibido: "${id}"`
+      });
+    }
+    
+    // Validar que aulaId sea válido
+    if (!aulaId || isNaN(parseInt(aulaId))) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID de aula inválido',
+        message: 'El aulaId es requerido y debe ser un número válido'
+      });
+    }
+    
+    // Verificar que el examen existe Y ya tiene un aula asignada
+    const examen = await prisma.examen.findUnique({
+      where: { id: examenId },
+      include: {
+        carrera: { include: { facultad: true } },
+        aula: true
+      }
+    });
+    
+    if (!examen) {
+      return res.status(404).json({
+        success: false,
+        error: 'Examen no encontrado',
+        message: `No se encontró examen con ID ${examenId}`
+      });
+    }
+    
+    if (!examen.aulaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Examen sin aula asignada',
+        message: 'Este examen no tiene un aula asignada. Use el endpoint de asignación en su lugar.'
+      });
+    }
+    
+    // Verificar que la nueva aula existe
+    const nuevaAula = await prisma.aula.findUnique({
+      where: { id: parseInt(aulaId) }
+    });
+    
+    if (!nuevaAula) {
+      return res.status(404).json({
+        success: false,
+        error: 'Nueva aula no encontrada',
+        message: `No se encontró aula con ID ${aulaId}`
+      });
+    }
+    
+    // Verificar que no sea la misma aula
+    if (examen.aulaId === parseInt(aulaId)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Misma aula',
+        message: `El examen ya está asignado al aula "${nuevaAula.nombre}"`
+      });
+    }
+    
+    const aulaAnterior = examen.aula;
+    
+    // Cambiar el aula
+    const examenActualizado = await prisma.examen.update({
+      where: { id: examenId },
+      data: {
+        aulaId: parseInt(aulaId),
+        observaciones: motivo ? `Cambio de aula: ${motivo}` : 'Aula cambiada'
+      },
+      include: {
+        carrera: { include: { facultad: true } },
+        aula: true
+      }
+    });
+    
+    console.log(`🔄 Cambio de aula: Examen ${examenId} | "${aulaAnterior?.nombre}" → "${nuevaAula.nombre}"`);
+    
+    return res.status(200).json({
+      success: true,
+      message: `Aula cambiada exitosamente de "${aulaAnterior?.nombre}" a "${nuevaAula.nombre}"`,
+      data: {
+        examen: examenActualizado,
+        cambio: {
+          aulaAnterior: {
+            id: aulaAnterior?.id,
+            nombre: aulaAnterior?.nombre
+          },
+          aulaNueva: {
+            id: nuevaAula.id,
+            nombre: nuevaAula.nombre
+          },
+          motivo: motivo || 'No especificado',
+          fechaCambio: new Date().toISOString()
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error cambiando aula:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error cambiando aula',
       message: error.message
     });
   }
