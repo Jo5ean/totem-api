@@ -81,7 +81,7 @@ router.get('/', async (req, res) => {
 // GET /api/v1/examenes/por-fecha - Obtener exámenes agrupados por fecha
 router.get('/por-fecha', async (req, res) => {
   try {
-    const { soloSinAula, soloConAula, fechaDesde, fechaHasta } = req.query;
+    const { soloSinAula, soloConAula, fechaDesde, fechaHasta, actualizarCantidades } = req.query;
     
     // APLICAR FILTRO DESDE HOY EN ADELANTE por defecto
     const hoy = new Date();
@@ -130,6 +130,78 @@ router.get('/por-fecha', async (req, res) => {
       }
     });
     
+    // 🔄 ACTUALIZAR CANTIDADES DE INSCRIPTOS SI SE SOLICITA
+    if (actualizarCantidades === 'true') {
+      console.log(`🔄 Actualizando cantidades de inscriptos para ${examenes.length} exámenes...`);
+      
+      // Actualizar cantidades en paralelo (máximo 5 a la vez para no saturar la API)
+      const batchSize = 5;
+      for (let i = 0; i < examenes.length; i += batchSize) {
+        const batch = examenes.slice(i, i + batchSize);
+        
+        await Promise.all(batch.map(async (examen) => {
+          try {
+            if (!examen.examenTotem?.materiaTotem) return;
+            
+            const codigoMateria = examen.examenTotem.materiaTotem;
+            const areaTema = examen.examenTotem.areaTemaTotem;
+            const carreraTotem = examen.examenTotem.carreraTotem;
+            
+            // Consultar API externa
+            const fechaDesde = new Date().toLocaleDateString('es-AR', {
+              day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+            const fechaHasta = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR', {
+              day: '2-digit', month: '2-digit', year: 'numeric'
+            });
+            
+            const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
+            
+            const response = await fetch(apiUrl, { timeout: 5000 });
+            if (!response.ok) return;
+            
+            const datosCompletos = await response.json();
+            if (!Array.isArray(datosCompletos)) return;
+            
+            // Filtrar por areaTema y carrera
+            const inscriptosFiltrados = datosCompletos.filter(registro => {
+              const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
+              const cumpleCarrera = carreraTotem ? registro.carrera == carreraTotem : true;
+              return cumpleAreaTema && cumpleCarrera && registro.alumnos?.length > 0;
+            });
+            
+            // Extraer inscriptos con LUGAR = "3"
+            let inscriptosLugar3 = [];
+            inscriptosFiltrados.forEach(registro => {
+              if (registro.alumnos) {
+                const lugar3 = registro.alumnos.filter(inscripto => inscripto.lugar === "3");
+                inscriptosLugar3 = inscriptosLugar3.concat(lugar3);
+              }
+            });
+            
+            // Actualizar en la base de datos
+            await prisma.examen.update({
+              where: { id: examen.id },
+              data: {
+                cantidadInscriptos: inscriptosLugar3.length,
+                fechaUltConsulta: new Date()
+              }
+            });
+            
+            // Actualizar el objeto en memoria para la respuesta
+            examen.cantidadInscriptos = inscriptosLugar3.length;
+            
+            console.log(`✅ Examen ${examen.id}: ${inscriptosLugar3.length} inscriptos con lugar=3`);
+            
+          } catch (error) {
+            console.error(`❌ Error actualizando examen ${examen.id}:`, error.message);
+          }
+        }));
+      }
+      
+      console.log(`✅ Actualización de cantidades completada`);
+    }
+    
     // Agrupar por fecha
     const examenesPorFecha = examenes.reduce((grupos, examen) => {
       const fechaStr = examen.fecha.toISOString().split('T')[0];
@@ -149,7 +221,7 @@ router.get('/por-fecha', async (req, res) => {
           facultad: examen.carrera.facultad?.nombre || 'Sin facultad'
         },
         aula: examen.aula,
-        cantidadInscriptos: examen.cantidadInscriptos || 0,
+        cantidadInscriptos: examen.cantidadInscriptos !== null ? examen.cantidadInscriptos : 'Sin consultar',
         necesitaAsignacion: !examen.aulaId
       });
       

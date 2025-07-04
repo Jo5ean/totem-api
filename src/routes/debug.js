@@ -271,4 +271,247 @@ router.post('/reset-database', async (req, res) => {
   }
 });
 
+// GET /api/debug/carreras - Diagnóstico de carreras
+router.get('/carreras', async (req, res) => {
+  try {
+    console.log('🔍 Obteniendo diagnóstico de carreras...');
+    
+    // 1. Obtener carreras actuales
+    const carreras = await prisma.carrera.findMany({
+      include: { 
+        facultad: {
+          select: { nombre: true }
+        }
+      },
+      orderBy: { codigo: 'asc' }
+    });
+    
+    // 2. Obtener carreras TOTEM
+    const carrerasTotem = await prisma.carreraTotem.findMany({
+      include: {
+        carrera: {
+          include: { facultad: true }
+        }
+      },
+      orderBy: { codigoTotem: 'asc' }
+    });
+    
+    // 3. Identificar carreras problemáticas (nombres genéricos)
+    const carrerasGenericas = carreras.filter(c => 
+      c.nombre.includes('Carrera ') && !c.nombre.includes('Licenciatura') && !c.nombre.includes('Tecnicatura')
+    );
+    
+    // 4. Carreras con nombres reales esperados
+    const carrerasRealesEsperadas = {
+      '11': 'Licenciatura en Administración de Empresas',
+      '14': 'Contador Público', 
+      '15': 'Licenciatura en Comercialización',
+      '16': 'Abogacía',
+      '17': 'Licenciatura en Relaciones Internacionales',
+      '30': 'Licenciatura en Relaciones Públicas e Institucionales',
+      '355': 'Escribanía',
+      '363': 'Procuración',
+      '336': 'Licenciatura en Recursos Humanos',
+      '113': 'Licenciatura en Gestión Educativa'
+    };
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        resumen: {
+          totalCarreras: carreras.length,
+          carrerasGenericas: carrerasGenericas.length,
+          carrerasTotem: carrerasTotem.length,
+          carrerasMapeadas: carrerasTotem.filter(ct => ct.esMapeada).length
+        },
+        carreras: carreras.map(c => ({
+          id: c.id,
+          codigo: c.codigo,
+          nombre: c.nombre,
+          facultad: c.facultad?.nombre || 'Sin facultad',
+          esGenerica: c.nombre.includes('Carrera ') && !c.nombre.includes('Licenciatura'),
+          nombreEsperado: carrerasRealesEsperadas[c.codigo] || null
+        })),
+        carrerasProblematicas: carrerasGenericas.map(c => ({
+          codigo: c.codigo,
+          nombreActual: c.nombre,
+          nombreEsperado: carrerasRealesEsperadas[c.codigo] || 'No definido'
+        })),
+        carrerasTotem: carrerasTotem.map(ct => ({
+          id: ct.id,
+          codigoTotem: ct.codigoTotem,
+          esMapeada: ct.esMapeada,
+          carreraAsociada: ct.carrera ? {
+            codigo: ct.carrera.codigo,
+            nombre: ct.carrera.nombre,
+            facultad: ct.carrera.facultad?.nombre
+          } : null
+        }))
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error en diagnóstico de carreras:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error obteniendo diagnóstico de carreras',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/debug/corregir-carreras - Corregir nombres de carreras
+router.post('/corregir-carreras', async (req, res) => {
+  try {
+    console.log('🔧 Iniciando corrección de nombres de carreras...');
+    
+    // Datos reales de carreras del CSV
+    const carrerasRealesCSV = {
+      '0': 'Otra Carrera Presencial',
+      '1': 'Licenciatura en Comunicaciones Sociales',
+      '2': 'Profesorado en Filosofía',
+      '4': 'Profesorado en Inglés',
+      '6': 'Profesorado en Psicología',
+      '7': 'Locutor Nacional',
+      '9': 'Tecnicatura Universitaria en Secretariado Ejecutivo',
+      '10': 'Licenciatura en Economía',
+      '11': 'Licenciatura en Administración de Empresas',
+      '14': 'Contador Público',
+      '15': 'Licenciatura en Comercialización',
+      '16': 'Abogacía',
+      '17': 'Licenciatura en Relaciones Internacionales',
+      '18': 'Ingeniería Civil',
+      '19': 'Ingeniería Industrial',
+      '26': 'Arquitectura',
+      '28': 'Diseño de Interiores',
+      '30': 'Licenciatura en Relaciones Públicas e Institucionales',
+      '31': 'Profesorado en Educación Física',
+      '32': 'Licenciatura en Educación Física',
+      '33': 'Caligrafo Público Nacional',
+      '37': 'Licenciatura en Informática',
+      '46': 'Licenciatura en Criminalística',
+      '53': 'Formación Docente para Profesionales',
+      '54': 'Productor y Director para Radio y Televisión',
+      '62': 'Maestría en Administración de Negocios',
+      '67': 'Perito en Balística',
+      '68': 'Perito en Accidentología',
+      '72': 'Especialización en Seguridad e Higiene en el Trabajo',
+      '83': 'Tecnicatura Universitaria en Higiene y Seguridad en el Trabajo',
+      '84': 'Ingenieria en Informática',
+      '86': 'Licenciatura en Turismo',
+      '88': 'Tecnicatura Univ. en Gestión de Bancos y Empresas Financieras',
+      '91': 'Licenciatura en Gestión Educativa',
+      '94': 'Licenciatura en Inglés (Ciclo de Complementación Curricular)',
+      '96': 'Tecnicatura Universitaria en Gestión de Calidad',
+      '97': 'Tecnicatura Universitaria en Seguros',
+      '98': 'Especialización en Dirección de Recursos Humanos',
+      '100': 'Licenciatura en Filosofía',
+      '104': 'Licenciatura en Educación Física - Ciclo de Complementación Curricular',
+      '105': 'Licenciatura en Psicología',
+      '109': 'Traductor Público en Inglés',
+      '113': 'Licenciatura en Gestión Educativa',
+      '117': 'Ingenieria en Telecomunicaciones',
+      '121': 'Maestría en Gestión Ambiental',
+      '123': 'Ciencias Veterinarias',
+      '128': 'Operador Técnico de Estudio de Radio',
+      '133': 'Licenciatura en Administración Agropecuaria',
+      '138': 'Licenciatura en Higiene y Seguridad en el Trabajo',
+      '139': 'Licenciatura en Artes Musicales',
+      '141': 'Especialización en Dirección y Gestión de Alojamientos Turísticos',
+      '142': 'Licenciatura en Trabajo Social',
+      '148': 'Licenciatura en Diseño de Interiores - Ciclo de complementación Curricular',
+      '153': 'Diplomatura Universitaria en Derecho de Familia',
+      '161': 'Tecnicatura en Gestión de Bancos, Empresas Financieras y de Seguros',
+      '185': 'Licenciatura en Gestión Eficiente de la Energía',
+      '186': 'Licenciatura en Entrenamiento Deportivo - Ciclo de Complementación Curricular',
+      '187': 'Licenciatura en Lenguajes Expresivos - Ciclo de Complementación Curricular',
+      '194': 'Licenciatura en Educación Física - Ciclo de Complementación Curricular',
+      '195': 'Licenciatura en Turismo - Ciclo de Complementación Curricular',
+      '196': 'Licenciatura en Seguridad - Ciclo de Complementación Curricular',
+      '212': 'Tecnicatura Universitaria en Ceremonial y Protocolo',
+      '214': 'Licenciatura en Comercio Internacional',
+      '244': 'Corredor Inmobiliario y Martillero Público',
+      '250': 'Licenciatura en Administración de Negocios Digitales',
+      '336': 'Licenciatura en Recursos Humanos',
+      '355': 'Escribanía',
+      '360': 'Tecnicatura en Seguridad Informática',
+      '361': 'Licenciatura en Criminología',
+      '363': 'Procuración',
+      '368': 'Licenciatura en Administración y Gestión Universitaria - Ciclo de Complementación Curricular',
+      '378': 'Licenciatura en Organización de Eventos',
+      '383': 'Tecnicatura en Operaciones Mineras'
+    };
+    
+    // Obtener carreras actuales
+    const carreras = await prisma.carrera.findMany({
+      orderBy: { codigo: 'asc' }
+    });
+    
+    let carrerasCorregidas = 0;
+    let carrerasNoCambiadas = 0;
+    const resultados = [];
+    
+    // Corregir cada carrera
+    for (const carrera of carreras) {
+      const nombreReal = carrerasRealesCSV[carrera.codigo];
+      
+      if (nombreReal && carrera.nombre !== nombreReal) {
+        // Actualizar nombre de carrera
+        await prisma.carrera.update({
+          where: { id: carrera.id },
+          data: { nombre: nombreReal }
+        });
+        
+        carrerasCorregidas++;
+        resultados.push({
+          codigo: carrera.codigo,
+          nombreAnterior: carrera.nombre,
+          nombreNuevo: nombreReal,
+          accion: 'CORREGIDA'
+        });
+        
+        console.log(`✅ Carrera ${carrera.codigo}: "${carrera.nombre}" → "${nombreReal}"`);
+      } else if (nombreReal) {
+        carrerasNoCambiadas++;
+        resultados.push({
+          codigo: carrera.codigo,
+          nombre: carrera.nombre,
+          accion: 'SIN_CAMBIOS'
+        });
+      } else {
+        resultados.push({
+          codigo: carrera.codigo,
+          nombre: carrera.nombre,
+          accion: 'NO_ENCONTRADA_EN_CSV'
+        });
+        console.log(`⚠️ Carrera ${carrera.codigo}: No encontrada en CSV`);
+      }
+    }
+    
+    console.log(`✅ Corrección completada: ${carrerasCorregidas} carreras corregidas, ${carrerasNoCambiadas} sin cambios`);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Corrección de nombres de carreras completada',
+      data: {
+        resumen: {
+          totalCarreras: carreras.length,
+          carrerasCorregidas,
+          carrerasNoCambiadas,
+          carrerasNoEncontradas: resultados.filter(r => r.accion === 'NO_ENCONTRADA_EN_CSV').length
+        },
+        resultados
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error corrigiendo carreras:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error corrigiendo nombres de carreras',
+      message: error.message
+    });
+  }
+});
+
 export default router; 

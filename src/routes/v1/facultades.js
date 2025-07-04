@@ -14,6 +14,12 @@ router.get('/', async (req, res) => {
         },
         sectores: {
           where: { activo: true }
+        },
+        _count: {
+          select: {
+            carreras: { where: { activa: true } },
+            syncLogs: true
+          }
         }
       }
     });
@@ -30,6 +36,74 @@ router.get('/', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Error obteniendo facultades',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/v1/facultades - Crear nueva facultad
+router.post('/', async (req, res) => {
+  try {
+    const { nombre, codigo, sheetId } = req.body;
+
+    // Validaciones
+    if (!nombre || !codigo) {
+      return res.status(400).json({
+        success: false,
+        error: 'Datos requeridos faltantes',
+        message: 'Los campos nombre y código son obligatorios'
+      });
+    }
+
+    // Verificar que el código no exista
+    const facultadExistente = await prisma.facultad.findFirst({
+      where: { 
+        OR: [
+          { codigo: codigo },
+          { nombre: nombre }
+        ]
+      }
+    });
+
+    if (facultadExistente) {
+      return res.status(409).json({
+        success: false,
+        error: 'Facultad ya existe',
+        message: `Ya existe una facultad con código "${codigo}" o nombre "${nombre}"`
+      });
+    }
+
+    // Crear facultad
+    const facultad = await prisma.facultad.create({
+      data: {
+        nombre: nombre.trim(),
+        codigo: codigo.trim(),
+        sheetId: sheetId?.trim() || null,
+        activa: true
+      },
+      include: {
+        _count: {
+          select: {
+            carreras: { where: { activa: true } },
+            syncLogs: true
+          }
+        }
+      }
+    });
+
+    console.log(`✅ Facultad creada: ${facultad.nombre} (${facultad.codigo})`);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Facultad creada exitosamente',
+      data: facultad
+    });
+    
+  } catch (error) {
+    console.error('Error creando facultad:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error creando facultad',
       message: error.message
     });
   }

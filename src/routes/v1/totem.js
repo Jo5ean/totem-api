@@ -277,6 +277,296 @@ router.post('/aplicar-mapeos-carreras', async (req, res) => {
   }
 });
 
+// ============================================================================
+// ENDPOINTS PARA BACKOFFICE - MAPEOS
+// ============================================================================
+
+// GET /api/v1/totem/mapeos/carreras - Obtener mapeos de carreras
+router.get('/mapeos/carreras', async (req, res) => {
+  try {
+    const { soloNoMapeadas } = req.query;
+    
+    const where = soloNoMapeadas === 'true' ? { esMapeada: false } : {};
+    
+    const carrerasTotem = await prisma.carreraTotem.findMany({
+      where,
+      include: {
+        carrera: {
+          include: {
+            facultad: {
+              select: { id: true, nombre: true, codigo: true }
+            }
+          }
+        }
+      },
+      orderBy: { codigoTotem: 'asc' }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mapeos de carreras obtenidos exitosamente',
+      data: carrerasTotem
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo mapeos de carreras:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error obteniendo mapeos de carreras',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/v1/totem/mapeos/carreras - Crear mapeo de carrera
+router.post('/mapeos/carreras', async (req, res) => {
+  try {
+    const { codigoTotem, carreraId } = req.body;
+
+    // Validaciones
+    if (!codigoTotem || !carreraId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Datos requeridos faltantes',
+        message: 'Los campos codigoTotem y carreraId son obligatorios'
+      });
+    }
+
+    // Verificar que la carrera existe
+    const carrera = await prisma.carrera.findUnique({
+      where: { id: parseInt(carreraId) },
+      include: { facultad: true }
+    });
+
+    if (!carrera) {
+      return res.status(404).json({
+        success: false,
+        error: 'Carrera no encontrada',
+        message: `No se encontró carrera con ID ${carreraId}`
+      });
+    }
+
+    // Buscar o crear carrera TOTEM
+    let carreraTotem = await prisma.carreraTotem.findFirst({
+      where: { codigoTotem: codigoTotem }
+    });
+
+    if (!carreraTotem) {
+      // Crear nueva carrera TOTEM
+      carreraTotem = await prisma.carreraTotem.create({
+        data: {
+          codigoTotem: codigoTotem,
+          carreraId: parseInt(carreraId),
+          esMapeada: true
+        }
+      });
+    } else {
+      // Actualizar mapeo existente
+      carreraTotem = await prisma.carreraTotem.update({
+        where: { id: carreraTotem.id },
+        data: {
+          carreraId: parseInt(carreraId),
+          esMapeada: true
+        }
+      });
+    }
+
+    // Obtener resultado completo
+    const resultado = await prisma.carreraTotem.findUnique({
+      where: { id: carreraTotem.id },
+      include: {
+        carrera: {
+          include: { facultad: true }
+        }
+      }
+    });
+
+    console.log(`✅ Mapeo carrera creado: ${codigoTotem} → ${carrera.nombre}`);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Mapeo de carrera creado exitosamente',
+      data: resultado
+    });
+    
+  } catch (error) {
+    console.error('Error creando mapeo de carrera:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error creando mapeo de carrera',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/v1/totem/mapeos/sectores - Obtener mapeos de sectores
+router.get('/mapeos/sectores', async (req, res) => {
+  try {
+    const { incluirNoMapeados } = req.query;
+    
+    // Obtener mapeos existentes
+    const mapeos = await prisma.sectorTotem.findMany({
+      include: {
+        facultad: {
+          select: { id: true, nombre: true, codigo: true }
+        }
+      },
+      orderBy: { sector: 'asc' }
+    });
+
+    let response = { mapeos };
+
+    // Si se solicita, incluir sectores no mapeados
+    if (incluirNoMapeados === 'true') {
+      // Obtener todos los sectores únicos del TOTEM
+      const sectoresEnTotem = await prisma.examenTotem.findMany({
+        select: { sectorTotem: true },
+        distinct: ['sectorTotem'],
+        where: { sectorTotem: { not: null } }
+      });
+
+      // Sectores mapeados
+      const sectoresMapeados = mapeos.map(m => m.sector);
+      
+      // Sectores no mapeados
+      const sectoresNoMapeados = sectoresEnTotem
+        .map(e => e.sectorTotem)
+        .filter(sector => sector && !sectoresMapeados.includes(sector))
+        .sort((a, b) => parseInt(a) - parseInt(b));
+
+      response.sectoresNoMapeados = sectoresNoMapeados;
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mapeos de sectores obtenidos exitosamente',
+      data: response
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo mapeos de sectores:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error obteniendo mapeos de sectores',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/v1/totem/mapeos/sectores - Crear mapeo de sector
+router.post('/mapeos/sectores', async (req, res) => {
+  try {
+    const { sector, facultadId } = req.body;
+
+    // Validaciones
+    if (!sector || !facultadId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Datos requeridos faltantes',
+        message: 'Los campos sector y facultadId son obligatorios'
+      });
+    }
+
+    // Verificar que la facultad existe
+    const facultad = await prisma.facultad.findUnique({
+      where: { id: parseInt(facultadId) }
+    });
+
+    if (!facultad) {
+      return res.status(404).json({
+        success: false,
+        error: 'Facultad no encontrada',
+        message: `No se encontró facultad con ID ${facultadId}`
+      });
+    }
+
+    // Verificar que el sector no esté ya mapeado
+    const mapeoExistente = await prisma.sectorTotem.findFirst({
+      where: { sector: sector }
+    });
+
+    if (mapeoExistente) {
+      return res.status(409).json({
+        success: false,
+        error: 'Sector ya mapeado',
+        message: `El sector ${sector} ya está mapeado`
+      });
+    }
+
+    // Crear mapeo
+    const mapeo = await prisma.sectorTotem.create({
+      data: {
+        sector: sector,
+        facultadId: parseInt(facultadId),
+        activo: true
+      },
+      include: {
+        facultad: {
+          select: { id: true, nombre: true, codigo: true }
+        }
+      }
+    });
+
+    console.log(`✅ Mapeo sector creado: Sector ${sector} → ${facultad.nombre}`);
+
+    return res.status(201).json({
+      success: true,
+      message: 'Mapeo de sector creado exitosamente',
+      data: mapeo
+    });
+    
+  } catch (error) {
+    console.error('Error creando mapeo de sector:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error creando mapeo de sector',
+      message: error.message
+    });
+  }
+});
+
+// DELETE /api/v1/totem/mapeos/sectores/:id - Eliminar mapeo de sector
+router.delete('/mapeos/sectores/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar que el mapeo existe
+    const mapeo = await prisma.sectorTotem.findUnique({
+      where: { id: parseInt(id) },
+      include: { facultad: true }
+    });
+
+    if (!mapeo) {
+      return res.status(404).json({
+        success: false,
+        error: 'Mapeo no encontrado',
+        message: `No se encontró mapeo con ID ${id}`
+      });
+    }
+
+    // Eliminar mapeo
+    await prisma.sectorTotem.delete({
+      where: { id: parseInt(id) }
+    });
+
+    console.log(`✅ Mapeo sector eliminado: Sector ${mapeo.sector} → ${mapeo.facultad.nombre}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Mapeo de sector eliminado exitosamente',
+      data: { id: parseInt(id), sector: mapeo.sector }
+    });
+    
+  } catch (error) {
+    console.error('Error eliminando mapeo de sector:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error eliminando mapeo de sector',
+      message: error.message
+    });
+  }
+});
+
 // GET /api/v1/totem - Lista de endpoints disponibles
 router.get('/', (req, res) => {
   res.json({
