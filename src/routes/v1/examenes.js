@@ -132,8 +132,10 @@ router.get('/por-fecha', async (req, res) => {
     });
     
     // 🔄 ACTUALIZAR CANTIDADES DE INSCRIPTOS AUTOMÁTICAMENTE
-    console.log(`🔄 Actualizando cantidades de inscriptos para ${examenes.length} exámenes...`);
+    // TEMPORALMENTE COMENTADO para que el backoffice no se cuelgue
+    // console.log(`🔄 Actualizando cantidades de inscriptos para ${examenes.length} exámenes...`);
       
+      /*
       // Actualizar cantidades en paralelo (máximo 5 a la vez para no saturar la API)
       const batchSize = 5;
       for (let i = 0; i < examenes.length; i += batchSize) {
@@ -200,6 +202,7 @@ router.get('/por-fecha', async (req, res) => {
       }
       
       console.log(`✅ Actualización de cantidades completada`);
+      */
     
     // Agrupar por fecha
     const examenesPorFecha = examenes.reduce((grupos, examen) => {
