@@ -81,19 +81,19 @@ const CARRERAS_CSV = [
 // Mapeo de tipos de carrera a facultades por palabras clave
 const MAPEO_FACULTADES = {
   1: { // ARTES Y CIENCIAS
-    palabras: ['comunicaciones', 'filosofia', 'ingles', 'psicologia', 'locutor', 'psicologia', 'filosofia', 'artes', 'musicales'],
+    palabras: ['comunicaciones', 'filosofia', 'filosofía', 'ingles', 'inglés', 'psicologia', 'psicología', 'locutor', 'artes', 'musicales'],
     nombre: 'FACULTAD DE ARTES Y CIENCIAS'
   },
   2: { // ECONOMÍA Y ADMINISTRACIÓN  
-    palabras: ['economia', 'administracion', 'empresas', 'contador', 'comercializacion', 'recursos humanos', 'negocios', 'comercio'],
+    palabras: ['economia', 'economía', 'administracion', 'administración', 'empresas', 'contador', 'comercializacion', 'comercialización', 'recursos humanos', 'negocios', 'comercio'],
     nombre: 'FACULTAD DE ECONOMIA Y ADMINISTRACION'
   },
   3: { // CIENCIAS JURÍDICAS
-    palabras: ['abogacia', 'derecho', 'relaciones internacionales', 'criminalistica', 'balistica', 'accidentologia', 'procuracion'],
+    palabras: ['abogacia', 'abogacía', 'derecho', 'relaciones internacionales', 'criminalistica', 'criminalística', 'balistica', 'balística', 'accidentologia', 'accidentología', 'procuracion', 'procuración'],
     nombre: 'FACULTAD DE CIENCIAS JURIDICAS'
   },
   4: { // INGENIERÍA
-    palabras: ['ingenieria', 'informatica', 'telecomunicaciones', 'higiene', 'seguridad', 'trabajo', 'gestion eficiente energia'],
+    palabras: ['ingenieria', 'ingeniería', 'informatica', 'informática', 'telecomunicaciones', 'higiene', 'seguridad', 'trabajo', 'gestion eficiente energia', 'gestión eficiente energía'],
     nombre: 'FACULTAD DE INGENIERIA'
   },
   5: { // ARQUITECTURA Y URBANISMO
@@ -105,7 +105,7 @@ const MAPEO_FACULTADES = {
     nombre: 'ESCUELA UNIVERSITARIA DE TRABAJO SOCIAL'
   },
   7: { // ESCUELA UNIVERSITARIA DE EDUCACIÓN FÍSICA
-    palabras: ['educacion fisica', 'entrenamiento deportivo'],
+    palabras: ['educacion fisica', 'educación física', 'entrenamiento deportivo'],
     nombre: 'ESCUELA UNIVERSITARIA DE EDUCACION FISICA'
   },
   8: { // ESCUELA UNIVERSITARIA DE TURISMO
@@ -113,22 +113,29 @@ const MAPEO_FACULTADES = {
     nombre: 'ESCUELA UNIVERSITARIA DE TURISMO'
   },
   9: { // CIENCIAS AGRARIAS Y VETERINARIAS
-    palabras: ['veterinarias', 'administracion agropecuaria', 'gestion ambiental', 'operaciones mineras'],
+    palabras: ['veterinarias', 'administracion agropecuaria', 'administración agropecuaria', 'gestion ambiental', 'gestión ambiental', 'operaciones mineras'],
     nombre: 'CIENCIAS AGRARIAS Y VETERINARIAS'
   }
 };
 
 function determinarFacultad(nombreCarrera) {
-  const nombreNormalizado = nombreCarrera.toLowerCase();
+  // Normalizar texto: minúsculas y sin acentos
+  const nombreNormalizado = nombreCarrera.toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, ''); // Remover acentos
+  
+  console.log(`🔍 Mapeando carrera: "${nombreCarrera}" → "${nombreNormalizado}"`);
   
   for (const [facultadId, config] of Object.entries(MAPEO_FACULTADES)) {
     for (const palabra of config.palabras) {
       if (nombreNormalizado.includes(palabra)) {
+        console.log(`✅ Coincidencia encontrada: "${palabra}" → ${config.nombre}`);
         return parseInt(facultadId);
       }
     }
   }
   
+  console.log(`⚠️ No se encontró mapeo para "${nombreCarrera}", usando Economía por defecto`);
   // Por defecto, asignar a Economía y Administración si no se encuentra
   return 2;
 }
