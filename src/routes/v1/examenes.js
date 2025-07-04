@@ -1,5 +1,6 @@
 import express from 'express';
 import prisma from '../../lib/db.js';
+import { formatearNombreAula } from '../../lib/helpers.js';
 
 const router = express.Router();
 
@@ -218,7 +219,10 @@ router.get('/por-fecha', async (req, res) => {
           nombre: examen.carrera.nombre,
           facultad: examen.carrera.facultad?.nombre || 'Sin facultad'
         },
-        aula: examen.aula,
+        aula: examen.aula ? {
+          ...examen.aula,
+          nombre: formatearNombreAula(examen.aula.nombre)
+        } : null,
         cantidadInscriptos: examen.cantidadInscriptos !== null ? examen.cantidadInscriptos : 'Sin consultar',
         necesitaAsignacion: !examen.aulaId
       });
