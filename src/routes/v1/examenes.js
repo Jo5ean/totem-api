@@ -346,7 +346,9 @@ router.get('/:id/inscripciones', async (req, res) => {
     
     console.log(`🌐 Consultando API: ${apiUrl}`);
     
-    const response = await fetch(apiUrl);
+    const response = await fetch(apiUrl, { 
+      timeout: 8000 // 🔥 TIMEOUT DE 8 SEGUNDOS - CRÍTICO PARA EVITAR CUELGUES
+    });
     
     if (!response.ok) {
       console.warn(`⚠️ API externa no disponible: ${response.status}`);
