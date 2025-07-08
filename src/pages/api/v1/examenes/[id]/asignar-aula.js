@@ -1,12 +1,126 @@
 import prisma from '../../../../../lib/db.js';
 import { withCors } from '../../../../../lib/cors.js';
 
+// 🆕 FUNCIÓN PARA ELIMINAR ASIGNACIÓN DE AULA
+async function eliminarAsignacionAula(req, res) {
+  const { id } = req.query;
+
+  // Validar parámetros
+  if (!id || isNaN(parseInt(id))) {
+    return res.status(400).json({
+      success: false,
+      error: 'ID de examen inválido'
+    });
+  }
+
+  try {
+    // 1. Verificar que el examen existe y tiene aula asignada
+    const examen = await prisma.examen.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        carrera: {
+          include: { facultad: true }
+        },
+        aula: true
+      }
+    });
+
+    if (!examen) {
+      return res.status(404).json({
+        success: false,
+        error: 'Examen no encontrado'
+      });
+    }
+
+    if (!examen.aulaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'El examen no tiene aula asignada'
+      });
+    }
+
+    // 2. Obtener datos del aula antes de quitar asignación
+    const aulaAnterior = examen.aula;
+    const cantidadInscriptos = examen.cantidadInscriptos || 0;
+
+    // 3. Eliminar asignación y actualizar contador de alumnos
+    const [examenActualizado] = await prisma.$transaction([
+      prisma.examen.update({
+        where: { id: parseInt(id) },
+        data: {
+          aulaId: null,
+          updatedAt: new Date()
+        },
+        include: {
+          carrera: {
+            include: { facultad: true }
+          }
+        }
+      }),
+      prisma.aula.update({
+        where: { id: examen.aulaId },
+        data: {
+          alumnosAsignados: {
+            decrement: cantidadInscriptos
+          }
+        }
+      })
+    ]);
+
+    console.log(`🗑️ Asignación eliminada: Examen ${id} → Sin aula (${cantidadInscriptos} alumnos liberados)`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Asignación de aula eliminada exitosamente`,
+      data: {
+        examen: {
+          id: examenActualizado.id,
+          nombre: examenActualizado.nombreMateria,
+          fecha: examenActualizado.fecha?.toISOString().split('T')[0],
+          hora: examenActualizado.hora?.toTimeString().split(' ')[0],
+          inscriptos: cantidadInscriptos,
+          carrera: {
+            nombre: examenActualizado.carrera.nombre,
+            facultad: examenActualizado.carrera.facultad.nombre
+          },
+          aula: null
+        },
+        eliminacion: {
+          realizada: true,
+          timestamp: new Date().toISOString(),
+          alumnosLiberados: cantidadInscriptos,
+          aulaAnterior: {
+            id: aulaAnterior.id,
+            nombre: aulaAnterior.nombre,
+            capacidad: aulaAnterior.capacidad
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error eliminando asignación:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Error interno del servidor',
+      message: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+}
+
 async function handler(req, res) {
+
+  // 🆕 SOPORTE PARA DELETE (borrar asignación)
+  if (req.method === 'DELETE') {
+    return await eliminarAsignacionAula(req, res);
+  }
 
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,
-      error: 'Método no permitido. Usa POST.'
+      error: 'Método no permitido. Usa POST para asignar o DELETE para borrar asignación.'
     });
   }
 

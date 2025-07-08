@@ -46,14 +46,17 @@ class TotemService {
       const duration = Date.now() - startTime;
       
       console.log(`🎉 Sincronización TOTEM completada en ${duration}ms`);
-      console.log(`📊 Total: ${processedExams.length} exámenes creados de ${sheetResult.data.length} filas`);
+      console.log(`📊 Total: ${processedExams.created.length + processedExams.updated.length} exámenes creados/actualizados de ${sheetResult.data.length} filas`);
+      console.log(`📊 Detalle: ${processedExams.created.length} creados, ${processedExams.updated.length} actualizados`);
       
       return {
         success: true,
         data: {
           source: 'sheet.best',
           totemDataId: totemDataRecord.id,
-          examensCreated: processedExams.length,
+          examensCreated: processedExams.created.length,
+          examensUpdated: processedExams.updated.length,
+          totalProcessed: processedExams.created.length + processedExams.updated.length,
           rowsProcessed: sheetResult.data.length,
           validation: validation,
           detection: detection,
@@ -85,9 +88,10 @@ class TotemService {
 
   async processTotemDataToExams(sheetData) {
     const createdExams = [];
+    const updatedExams = [];
     let duplicatesSkipped = 0;
     
-    console.log(`🔄 Procesando ${sheetData.length} filas para crear exámenes...`);
+    console.log(`🔄 Procesando ${sheetData.length} filas para crear/actualizar exámenes...`);
     
     // 🎯 PASO 1: MAPEO COMPLETO PREVIO
     await this.ensureCompleteMapping(sheetData);
@@ -124,39 +128,42 @@ class TotemService {
         // 3. Buscar o crear aula si hay información
         const aula = await this.findOrCreateAula(totemData);
 
-        // 4. VERIFICAR DUPLICADOS REALES Y PROTEGER AULAS ASIGNADAS
+        // 4. 🆕 VERIFICAR SI EXISTE PARA ACTUALIZAR O CREAR
         const existeExamen = await this.checkExamenDuplicate(totemData, carrera.id);
+        
         if (existeExamen) {
+          // 🔄 ACTUALIZAR EXAMEN EXISTENTE CON NUEVOS DATOS DEL SHEET
           const horaStr = totemData.hora ? totemData.hora.getHours() + ':' + totemData.hora.getMinutes() : 'sin-hora';
           
-          // ✅ PROTECCIÓN ESPECIAL: Si el examen ya tiene aula asignada
-          if (existeExamen.aulaId) {
-            console.log(`🔒 EXAMEN PROTEGIDO (CON AULA): ${totemData.sector}/${totemData.carrera}/${totemData.materia} (${totemData.fecha.toDateString()} ${horaStr}) - ID: ${existeExamen.id} - AULA: ${existeExamen.aulaId}`);
-          } else {
-            console.log(`📋 Examen duplicado detectado en BD: ${totemData.sector}/${totemData.carrera}/${totemData.materia} (${totemData.fecha.toDateString()} ${horaStr}) - Docente: ${totemData.docente} - ID: ${existeExamen.id}`);
-          }
+          console.log(`🔄 ACTUALIZANDO EXAMEN EXISTENTE: ${totemData.sector}/${totemData.carrera}/${totemData.materia} (${totemData.fecha.toDateString()} ${horaStr}) - ID: ${existeExamen.id}`);
           
-          duplicatesSkipped++;
-          continue; // ❌ NO SOBRESCRIBIR - Preservar examen existente
+          // Actualizar el examen con los nuevos datos
+          const examenActualizado = await this.updateExamenFromTotem(existeExamen.id, totemData, carrera.id, aula?.id);
+          
+          // Actualizar también el registro ExamenTotem con datos originales actualizados
+          await this.updateExamenTotemRecord(existeExamen.id, totemData, row);
+          
+          updatedExams.push(examenActualizado);
+          
+        } else {
+          // 5. ✅ CREAR NUEVO EXAMEN (no existe)
+          console.log(`✅ CREANDO NUEVO EXAMEN: ${totemData.sector}/${totemData.carrera}/${totemData.materia}`);
+          
+          const examen = await this.createExamenFromTotem(totemData, carrera.id, aula?.id);
+          
+          // Crear registro de ExamenTotem con datos originales
+          await this.createExamenTotemRecord(examen.id, totemData, row);
+          
+          createdExams.push(examen);
         }
-
-        // 5. Crear examen
-        const examen = await this.createExamenFromTotem(totemData, carrera.id, aula?.id);
-        
-        // 6. Crear registro de ExamenTotem con datos originales
-        await this.createExamenTotemRecord(examen.id, totemData, row);
-
-        // 7. Examen creado exitosamente
-
-        createdExams.push(examen);
 
       } catch (error) {
         console.error('Error procesando fila del TOTEM:', error, row);
       }
     }
 
-    console.log(`✅ Procesamiento completado: ${createdExams.length} exámenes creados, ${duplicatesSkipped} duplicados saltados`);
-    return createdExams;
+    console.log(`✅ Procesamiento completado: ${createdExams.length} exámenes creados, ${updatedExams.length} exámenes actualizados`);
+    return { created: createdExams, updated: updatedExams };
   }
 
   extractTotemRowData(row) {
@@ -293,10 +300,47 @@ class TotemService {
     });
   }
 
+  async updateExamenFromTotem(examenId, totemData, carreraId, aulaId = null) {
+    return await prisma.examen.update({
+      where: { id: examenId },
+      data: {
+        carreraId,
+        aulaId,
+        nombreMateria: totemData.nombreCorto || totemData.materia || 'Sin nombre',
+        fecha: totemData.fecha,
+        hora: totemData.hora,
+        tipoExamen: totemData.tipoExamen,
+        monitoreo: totemData.monitoreo,
+        materialPermitido: totemData.materialPermitido,
+        observaciones: totemData.observaciones,
+        modalidadExamen: totemData.tipoExamen?.includes('Virtual') ? 'virtual' : 'presencial'
+      }
+    });
+  }
+
   async createExamenTotemRecord(examenId, totemData, originalRow) {
     return await prisma.examenTotem.create({
       data: {
         examenId,
+        sectorTotem: totemData.sector,
+        carreraTotem: totemData.carrera,
+        materiaTotem: totemData.materia,
+        areaTemaTotem: totemData.areaTema,
+        modoTotem: totemData.modo,
+        urlTotem: totemData.url,
+        catedraTotem: totemData.catedra,
+        docenteTotem: totemData.docente,
+        monitoreoTotem: totemData.monitoreo,
+        controlTotem: totemData.control,
+        dataOriginal: originalRow
+      }
+    });
+  }
+
+  async updateExamenTotemRecord(examenId, totemData, originalRow) {
+    return await prisma.examenTotem.update({
+      where: { examenId },
+      data: {
         sectorTotem: totemData.sector,
         carreraTotem: totemData.carrera,
         materiaTotem: totemData.materia,
@@ -490,11 +534,28 @@ class TotemService {
       });
       
       if (!carreraExistente || !carreraExistente.esMapeada) {
+        // 🎯 DETERMINAR FACULTAD CORRECTA SEGÚN EL SECTOR
+        // Buscar qué sector corresponde a esta carrera en los datos
+        const filaConCarrera = sheetData.find(row => row.CARRERA?.toString().trim() === carreraCode);
+        const sectorCorrespondiente = filaConCarrera?.SECTOR?.toString().trim();
+        
+        // Mapear el sector a facultad
+        let facultadParaCarrera = null;
+        if (sectorCorrespondiente) {
+          facultadParaCarrera = await this.mapSectorToFacultad(sectorCorrespondiente);
+        }
+        
+        // Si no se encuentra facultad, usar la primera disponible como fallback
+        if (!facultadParaCarrera) {
+          const primeraFacultad = await prisma.facultad.findFirst({ where: { activa: true } });
+          facultadParaCarrera = primeraFacultad;
+        }
+        
         // Buscar si ya existe una carrera con este código en la BD
         const carreraEnBD = await prisma.carrera.findFirst({
           where: { 
             codigo: carreraCode.substring(0, 10),
-            facultadId: 1
+            facultadId: facultadParaCarrera.id
           }
         });
         
@@ -502,19 +563,19 @@ class TotemService {
         if (carreraEnBD) {
           // Usar carrera existente
           carreraId = carreraEnBD.id;
-          console.log(`   🔗 Carrera "${carreraCode}" → Carrera existente "${carreraEnBD.nombre}"`);
+          console.log(`   🔗 Carrera "${carreraCode}" → Carrera existente "${carreraEnBD.nombre}" (${facultadParaCarrera.nombre})`);
         } else {
-          // Crear nueva carrera solo si no existe
+          // Crear nueva carrera con la facultad correcta
           const nuevaCarrera = await prisma.carrera.create({
             data: {
               nombre: `Carrera ${carreraCode}`,
               codigo: carreraCode.substring(0, 10),
-              facultadId: 1, // Facultad por defecto
+              facultadId: facultadParaCarrera.id, // ✅ USAR FACULTAD CORRECTA
               activa: true
             }
           });
           carreraId = nuevaCarrera.id;
-          console.log(`   🆕 Carrera "${carreraCode}" → Nueva Carrera "${nuevaCarrera.nombre}"`);
+          console.log(`   🆕 Carrera "${carreraCode}" → Nueva Carrera "${nuevaCarrera.nombre}" (${facultadParaCarrera.nombre})`);
         }
         
         await this.mapCarreraTotemToCarrera(carreraCode, carreraId);

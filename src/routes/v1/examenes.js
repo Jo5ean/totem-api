@@ -132,19 +132,30 @@ router.get('/por-fecha', async (req, res) => {
     });
     
     // 🔄 ACTUALIZAR CANTIDADES DE INSCRIPTOS AUTOMÁTICAMENTE
-    // TEMPORALMENTE COMENTADO para que el backoffice no se cuelgue
-    // console.log(`🔄 Actualizando cantidades de inscriptos para ${examenes.length} exámenes...`);
+    // Solo para exámenes que no han sido consultados en las últimas 24 horas
+    const examenesParaActualizar = examenes.filter(examen => {
+      if (!examen.examenTotem?.materiaTotem) return false;
       
-      /*
-      // Actualizar cantidades en paralelo (máximo 5 a la vez para no saturar la API)
-      const batchSize = 5;
-      for (let i = 0; i < examenes.length; i += batchSize) {
-        const batch = examenes.slice(i, i + batchSize);
+      // Si nunca se consultó, o si fue hace más de 24 horas
+      if (!examen.fechaUltConsulta) return true;
+      
+      const ahora = new Date();
+      const ultimaConsulta = new Date(examen.fechaUltConsulta);
+      const horasTranscurridas = (ahora - ultimaConsulta) / (1000 * 60 * 60);
+      
+      return horasTranscurridas > 24; // Más de 24 horas
+    });
+    
+    if (examenesParaActualizar.length > 0) {
+      console.log(`🔄 Actualizando cantidades de inscriptos para ${examenesParaActualizar.length} exámenes no consultados recientemente...`);
+      
+      // Actualizar cantidades en paralelo (máximo 3 a la vez para no saturar la API)
+      const batchSize = 3;
+      for (let i = 0; i < examenesParaActualizar.length; i += batchSize) {
+        const batch = examenesParaActualizar.slice(i, i + batchSize);
         
         await Promise.all(batch.map(async (examen) => {
           try {
-            if (!examen.examenTotem?.materiaTotem) return;
-            
             const codigoMateria = examen.examenTotem.materiaTotem;
             const areaTema = examen.examenTotem.areaTemaTotem;
             const carreraTotem = examen.examenTotem.carreraTotem;
@@ -159,8 +170,11 @@ router.get('/por-fecha', async (req, res) => {
             
             const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
             
-            const response = await fetch(apiUrl, { timeout: 5000 });
-            if (!response.ok) return;
+            const response = await fetch(apiUrl, { timeout: 8000 });
+            if (!response.ok) {
+              console.log(`⚠️ API externa no disponible para examen ${examen.id}`);
+              return;
+            }
             
             const datosCompletos = await response.json();
             if (!Array.isArray(datosCompletos)) return;
@@ -197,12 +211,21 @@ router.get('/por-fecha', async (req, res) => {
             
           } catch (error) {
             console.error(`❌ Error actualizando examen ${examen.id}:`, error.message);
+            // En caso de error, marcar como consultado para evitar intentos repetidos
+            try {
+              await prisma.examen.update({
+                where: { id: examen.id },
+                data: { fechaUltConsulta: new Date() }
+              });
+            } catch (updateError) {
+              console.error(`❌ Error marcando fecha de consulta:`, updateError);
+            }
           }
         }));
       }
       
       console.log(`✅ Actualización de cantidades completada`);
-      */
+    }
     
     // Agrupar por fecha
     const examenesPorFecha = examenes.reduce((grupos, examen) => {
