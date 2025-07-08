@@ -132,8 +132,8 @@ router.get('/por-fecha', async (req, res) => {
     });
     
     // 🔄 ACTUALIZAR CANTIDADES DE INSCRIPTOS AUTOMÁTICAMENTE
-    // Solo para exámenes que no han sido consultados en las últimas 24 horas
-    const examenesParaActualizar = examenes.filter(examen => {
+    // Solo si está habilitado y para exámenes que no han sido consultados en las últimas 24 horas
+    const examenesParaActualizar = actualizarCantidades !== 'false' ? examenes.filter(examen => {
       if (!examen.examenTotem?.materiaTotem) return false;
       
       // Si nunca se consultó, o si fue hace más de 24 horas
@@ -144,7 +144,7 @@ router.get('/por-fecha', async (req, res) => {
       const horasTranscurridas = (ahora - ultimaConsulta) / (1000 * 60 * 60);
       
       return horasTranscurridas > 24; // Más de 24 horas
-    });
+    }) : [];
     
     if (examenesParaActualizar.length > 0) {
       console.log(`🔄 Actualizando cantidades de inscriptos para ${examenesParaActualizar.length} exámenes no consultados recientemente...`);
