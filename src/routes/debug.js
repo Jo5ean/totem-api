@@ -272,6 +272,74 @@ router.post('/reset-database', async (req, res) => {
 });
 
 // GET /api/debug/carreras - Diagnóstico de carreras
+// POST /api/debug/reasignar-carreras - Reasignar carreras a facultades correctas
+router.post('/reasignar-carreras', async (req, res) => {
+  try {
+    console.log('🔧 REASIGNANDO CARRERAS A FACULTADES CORRECTAS...');
+    
+    // Mapeo según CSV del usuario: sector → carreras
+    const mapeoSectorCarreras = {
+      2: ['10', '11', '14', '15', '30', '161', '212', '214', '244', '250', '336', '368', '378', '83', '88', '9', '96', '97', '86', '133', '185', '186', '194', '138'], // ECONOMÍA Y ADMINISTRACIÓN
+      3: ['16', '355', '361', '363', '17', '196'], // CIENCIAS JURÍDICAS  
+      4: ['383'], // INGENIERÍA
+      21: ['113', '187'] // FACULTAD DE EDUCACIÓN
+    };
+    
+    const resultados = [];
+    let totalReasignadas = 0;
+    
+    for (const [sector, codigosCarreras] of Object.entries(mapeoSectorCarreras)) {
+      // Buscar facultad por sector
+      const facultad = await prisma.facultad.findFirst({
+        where: { sector: parseInt(sector) }
+      });
+      
+      if (!facultad) {
+        console.error(`❌ No se encontró facultad para sector ${sector}`);
+        continue;
+      }
+      
+      console.log(`📋 Reasignando ${codigosCarreras.length} carreras al sector ${sector} (${facultad.nombre})`);
+      
+      for (const codigoCarrera of codigosCarreras) {
+        const resultado = await prisma.carrera.updateMany({
+          where: { codigo: codigoCarrera },
+          data: { facultadId: facultad.id }
+        });
+        
+        if (resultado.count > 0) {
+          totalReasignadas += resultado.count;
+          console.log(`   ✅ Carrera ${codigoCarrera} → ${facultad.nombre}`);
+        } else {
+          console.log(`   ⚠️ Carrera ${codigoCarrera} no encontrada`);
+        }
+      }
+      
+      resultados.push({
+        sector: parseInt(sector),
+        facultad: facultad.nombre,
+        carreras: codigosCarreras.length,
+        facultadId: facultad.id
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: `Carreras reasignadas exitosamente: ${totalReasignadas} carreras`,
+      resultados,
+      totalReasignadas
+    });
+    
+  } catch (error) {
+    console.error('❌ Error reasignando carreras:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error reasignando carreras',
+      message: error.message
+    });
+  }
+});
+
 router.get('/carreras', async (req, res) => {
   try {
     console.log('🔍 Obteniendo diagnóstico de carreras...');

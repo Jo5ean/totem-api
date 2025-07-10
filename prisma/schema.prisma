@@ -12,6 +12,7 @@ model Facultad {
   id        Int              @id @default(autoincrement())
   nombre    String           @unique @db.VarChar(255)
   codigo    String?          @db.VarChar(50)
+  sector    Int?             
   sheetId   String?          @map("sheet_id") @db.VarChar(255)
   activa    Boolean          @default(true)
   createdAt DateTime         @default(now()) @map("created_at")

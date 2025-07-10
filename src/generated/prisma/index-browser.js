@@ -124,6 +124,7 @@ exports.Prisma.FacultadScalarFieldEnum = {
   id: 'id',
   nombre: 'nombre',
   codigo: 'codigo',
+  sector: 'sector',
   sheetId: 'sheetId',
   activa: 'activa',
   createdAt: 'createdAt',

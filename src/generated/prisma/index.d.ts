@@ -2052,16 +2052,19 @@ export namespace Prisma {
 
   export type FacultadAvgAggregateOutputType = {
     id: number | null
+    sector: number | null
   }
 
   export type FacultadSumAggregateOutputType = {
     id: number | null
+    sector: number | null
   }
 
   export type FacultadMinAggregateOutputType = {
     id: number | null
     nombre: string | null
     codigo: string | null
+    sector: number | null
     sheetId: string | null
     activa: boolean | null
     createdAt: Date | null
@@ -2072,6 +2075,7 @@ export namespace Prisma {
     id: number | null
     nombre: string | null
     codigo: string | null
+    sector: number | null
     sheetId: string | null
     activa: boolean | null
     createdAt: Date | null
@@ -2082,6 +2086,7 @@ export namespace Prisma {
     id: number
     nombre: number
     codigo: number
+    sector: number
     sheetId: number
     activa: number
     createdAt: number
@@ -2092,16 +2097,19 @@ export namespace Prisma {
 
   export type FacultadAvgAggregateInputType = {
     id?: true
+    sector?: true
   }
 
   export type FacultadSumAggregateInputType = {
     id?: true
+    sector?: true
   }
 
   export type FacultadMinAggregateInputType = {
     id?: true
     nombre?: true
     codigo?: true
+    sector?: true
     sheetId?: true
     activa?: true
     createdAt?: true
@@ -2112,6 +2120,7 @@ export namespace Prisma {
     id?: true
     nombre?: true
     codigo?: true
+    sector?: true
     sheetId?: true
     activa?: true
     createdAt?: true
@@ -2122,6 +2131,7 @@ export namespace Prisma {
     id?: true
     nombre?: true
     codigo?: true
+    sector?: true
     sheetId?: true
     activa?: true
     createdAt?: true
@@ -2219,6 +2229,7 @@ export namespace Prisma {
     id: number
     nombre: string
     codigo: string | null
+    sector: number | null
     sheetId: string | null
     activa: boolean
     createdAt: Date
@@ -2248,6 +2259,7 @@ export namespace Prisma {
     id?: boolean
     nombre?: boolean
     codigo?: boolean
+    sector?: boolean
     sheetId?: boolean
     activa?: boolean
     createdAt?: boolean
@@ -2264,13 +2276,14 @@ export namespace Prisma {
     id?: boolean
     nombre?: boolean
     codigo?: boolean
+    sector?: boolean
     sheetId?: boolean
     activa?: boolean
     createdAt?: boolean
     updatedAt?: boolean
   }
 
-  export type FacultadOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "nombre" | "codigo" | "sheetId" | "activa" | "createdAt" | "updatedAt", ExtArgs["result"]["facultad"]>
+  export type FacultadOmit<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = $Extensions.GetOmit<"id" | "nombre" | "codigo" | "sector" | "sheetId" | "activa" | "createdAt" | "updatedAt", ExtArgs["result"]["facultad"]>
   export type FacultadInclude<ExtArgs extends $Extensions.InternalArgs = $Extensions.DefaultArgs> = {
     carreras?: boolean | Facultad$carrerasArgs<ExtArgs>
     sectores?: boolean | Facultad$sectoresArgs<ExtArgs>
@@ -2289,6 +2302,7 @@ export namespace Prisma {
       id: number
       nombre: string
       codigo: string | null
+      sector: number | null
       sheetId: string | null
       activa: boolean
       createdAt: Date
@@ -2668,6 +2682,7 @@ export namespace Prisma {
     readonly id: FieldRef<"Facultad", 'Int'>
     readonly nombre: FieldRef<"Facultad", 'String'>
     readonly codigo: FieldRef<"Facultad", 'String'>
+    readonly sector: FieldRef<"Facultad", 'Int'>
     readonly sheetId: FieldRef<"Facultad", 'String'>
     readonly activa: FieldRef<"Facultad", 'Boolean'>
     readonly createdAt: FieldRef<"Facultad", 'DateTime'>
@@ -15390,6 +15405,7 @@ export namespace Prisma {
     id: 'id',
     nombre: 'nombre',
     codigo: 'codigo',
+    sector: 'sector',
     sheetId: 'sheetId',
     activa: 'activa',
     createdAt: 'createdAt',
@@ -15819,6 +15835,7 @@ export namespace Prisma {
     id?: IntFilter<"Facultad"> | number
     nombre?: StringFilter<"Facultad"> | string
     codigo?: StringNullableFilter<"Facultad"> | string | null
+    sector?: IntNullableFilter<"Facultad"> | number | null
     sheetId?: StringNullableFilter<"Facultad"> | string | null
     activa?: BoolFilter<"Facultad"> | boolean
     createdAt?: DateTimeFilter<"Facultad"> | Date | string
@@ -15832,6 +15849,7 @@ export namespace Prisma {
     id?: SortOrder
     nombre?: SortOrder
     codigo?: SortOrderInput | SortOrder
+    sector?: SortOrderInput | SortOrder
     sheetId?: SortOrderInput | SortOrder
     activa?: SortOrder
     createdAt?: SortOrder
@@ -15849,6 +15867,7 @@ export namespace Prisma {
     OR?: FacultadWhereInput[]
     NOT?: FacultadWhereInput | FacultadWhereInput[]
     codigo?: StringNullableFilter<"Facultad"> | string | null
+    sector?: IntNullableFilter<"Facultad"> | number | null
     sheetId?: StringNullableFilter<"Facultad"> | string | null
     activa?: BoolFilter<"Facultad"> | boolean
     createdAt?: DateTimeFilter<"Facultad"> | Date | string
@@ -15862,6 +15881,7 @@ export namespace Prisma {
     id?: SortOrder
     nombre?: SortOrder
     codigo?: SortOrderInput | SortOrder
+    sector?: SortOrderInput | SortOrder
     sheetId?: SortOrderInput | SortOrder
     activa?: SortOrder
     createdAt?: SortOrder
@@ -15880,6 +15900,7 @@ export namespace Prisma {
     id?: IntWithAggregatesFilter<"Facultad"> | number
     nombre?: StringWithAggregatesFilter<"Facultad"> | string
     codigo?: StringNullableWithAggregatesFilter<"Facultad"> | string | null
+    sector?: IntNullableWithAggregatesFilter<"Facultad"> | number | null
     sheetId?: StringNullableWithAggregatesFilter<"Facultad"> | string | null
     activa?: BoolWithAggregatesFilter<"Facultad"> | boolean
     createdAt?: DateTimeWithAggregatesFilter<"Facultad"> | Date | string
@@ -16861,6 +16882,7 @@ export namespace Prisma {
   export type FacultadCreateInput = {
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -16874,6 +16896,7 @@ export namespace Prisma {
     id?: number
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -16886,6 +16909,7 @@ export namespace Prisma {
   export type FacultadUpdateInput = {
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -16899,6 +16923,7 @@ export namespace Prisma {
     id?: IntFieldUpdateOperationsInput | number
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -16912,6 +16937,7 @@ export namespace Prisma {
     id?: number
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -16921,6 +16947,7 @@ export namespace Prisma {
   export type FacultadUpdateManyMutationInput = {
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -16931,6 +16958,7 @@ export namespace Prisma {
     id?: IntFieldUpdateOperationsInput | number
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -18000,6 +18028,17 @@ export namespace Prisma {
     not?: NestedStringNullableFilter<$PrismaModel> | string | null
   }
 
+  export type IntNullableFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+  }
+
   export type BoolFilter<$PrismaModel = never> = {
     equals?: boolean | BooleanFieldRefInput<$PrismaModel>
     not?: NestedBoolFilter<$PrismaModel> | boolean
@@ -18061,6 +18100,7 @@ export namespace Prisma {
     id?: SortOrder
     nombre?: SortOrder
     codigo?: SortOrder
+    sector?: SortOrder
     sheetId?: SortOrder
     activa?: SortOrder
     createdAt?: SortOrder
@@ -18069,12 +18109,14 @@ export namespace Prisma {
 
   export type FacultadAvgOrderByAggregateInput = {
     id?: SortOrder
+    sector?: SortOrder
   }
 
   export type FacultadMaxOrderByAggregateInput = {
     id?: SortOrder
     nombre?: SortOrder
     codigo?: SortOrder
+    sector?: SortOrder
     sheetId?: SortOrder
     activa?: SortOrder
     createdAt?: SortOrder
@@ -18085,6 +18127,7 @@ export namespace Prisma {
     id?: SortOrder
     nombre?: SortOrder
     codigo?: SortOrder
+    sector?: SortOrder
     sheetId?: SortOrder
     activa?: SortOrder
     createdAt?: SortOrder
@@ -18093,6 +18136,7 @@ export namespace Prisma {
 
   export type FacultadSumOrderByAggregateInput = {
     id?: SortOrder
+    sector?: SortOrder
   }
 
   export type IntWithAggregatesFilter<$PrismaModel = never> = {
@@ -18145,6 +18189,22 @@ export namespace Prisma {
     _count?: NestedIntNullableFilter<$PrismaModel>
     _min?: NestedStringNullableFilter<$PrismaModel>
     _max?: NestedStringNullableFilter<$PrismaModel>
+  }
+
+  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type BoolWithAggregatesFilter<$PrismaModel = never> = {
@@ -18243,17 +18303,6 @@ export namespace Prisma {
   export type CarreraSumOrderByAggregateInput = {
     id?: SortOrder
     facultadId?: SortOrder
-  }
-
-  export type IntNullableFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableFilter<$PrismaModel> | number | null
   }
 
   export type DateTimeNullableFilter<$PrismaModel = never> = {
@@ -18376,22 +18425,6 @@ export namespace Prisma {
     carreraId?: SortOrder
     aulaId?: SortOrder
     cantidadInscriptos?: SortOrder
-  }
-
-  export type IntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
   }
 
   export type DateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
@@ -19080,6 +19113,14 @@ export namespace Prisma {
     set?: string | null
   }
 
+  export type NullableIntFieldUpdateOperationsInput = {
+    set?: number | null
+    increment?: number
+    decrement?: number
+    multiply?: number
+    divide?: number
+  }
+
   export type BoolFieldUpdateOperationsInput = {
     set?: boolean
   }
@@ -19318,14 +19359,6 @@ export namespace Prisma {
 
   export type NullableDateTimeFieldUpdateOperationsInput = {
     set?: Date | string | null
-  }
-
-  export type NullableIntFieldUpdateOperationsInput = {
-    set?: number | null
-    increment?: number
-    decrement?: number
-    multiply?: number
-    divide?: number
   }
 
   export type ActaExamenUpdateManyWithoutExamenNestedInput = {
@@ -19617,6 +19650,17 @@ export namespace Prisma {
     not?: NestedStringNullableFilter<$PrismaModel> | string | null
   }
 
+  export type NestedIntNullableFilter<$PrismaModel = never> = {
+    equals?: number | IntFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | IntFieldRefInput<$PrismaModel>
+    lte?: number | IntFieldRefInput<$PrismaModel>
+    gt?: number | IntFieldRefInput<$PrismaModel>
+    gte?: number | IntFieldRefInput<$PrismaModel>
+    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+  }
+
   export type NestedBoolFilter<$PrismaModel = never> = {
     equals?: boolean | BooleanFieldRefInput<$PrismaModel>
     not?: NestedBoolFilter<$PrismaModel> | boolean
@@ -19696,7 +19740,7 @@ export namespace Prisma {
     _max?: NestedStringNullableFilter<$PrismaModel>
   }
 
-  export type NestedIntNullableFilter<$PrismaModel = never> = {
+  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
     equals?: number | IntFieldRefInput<$PrismaModel> | null
     in?: number[] | null
     notIn?: number[] | null
@@ -19704,7 +19748,23 @@ export namespace Prisma {
     lte?: number | IntFieldRefInput<$PrismaModel>
     gt?: number | IntFieldRefInput<$PrismaModel>
     gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableFilter<$PrismaModel> | number | null
+    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
+    _count?: NestedIntNullableFilter<$PrismaModel>
+    _avg?: NestedFloatNullableFilter<$PrismaModel>
+    _sum?: NestedIntNullableFilter<$PrismaModel>
+    _min?: NestedIntNullableFilter<$PrismaModel>
+    _max?: NestedIntNullableFilter<$PrismaModel>
+  }
+
+  export type NestedFloatNullableFilter<$PrismaModel = never> = {
+    equals?: number | FloatFieldRefInput<$PrismaModel> | null
+    in?: number[] | null
+    notIn?: number[] | null
+    lt?: number | FloatFieldRefInput<$PrismaModel>
+    lte?: number | FloatFieldRefInput<$PrismaModel>
+    gt?: number | FloatFieldRefInput<$PrismaModel>
+    gte?: number | FloatFieldRefInput<$PrismaModel>
+    not?: NestedFloatNullableFilter<$PrismaModel> | number | null
   }
 
   export type NestedBoolWithAggregatesFilter<$PrismaModel = never> = {
@@ -19738,33 +19798,6 @@ export namespace Prisma {
     gt?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     gte?: Date | string | DateTimeFieldRefInput<$PrismaModel>
     not?: NestedDateTimeNullableFilter<$PrismaModel> | Date | string | null
-  }
-
-  export type NestedIntNullableWithAggregatesFilter<$PrismaModel = never> = {
-    equals?: number | IntFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | IntFieldRefInput<$PrismaModel>
-    lte?: number | IntFieldRefInput<$PrismaModel>
-    gt?: number | IntFieldRefInput<$PrismaModel>
-    gte?: number | IntFieldRefInput<$PrismaModel>
-    not?: NestedIntNullableWithAggregatesFilter<$PrismaModel> | number | null
-    _count?: NestedIntNullableFilter<$PrismaModel>
-    _avg?: NestedFloatNullableFilter<$PrismaModel>
-    _sum?: NestedIntNullableFilter<$PrismaModel>
-    _min?: NestedIntNullableFilter<$PrismaModel>
-    _max?: NestedIntNullableFilter<$PrismaModel>
-  }
-
-  export type NestedFloatNullableFilter<$PrismaModel = never> = {
-    equals?: number | FloatFieldRefInput<$PrismaModel> | null
-    in?: number[] | null
-    notIn?: number[] | null
-    lt?: number | FloatFieldRefInput<$PrismaModel>
-    lte?: number | FloatFieldRefInput<$PrismaModel>
-    gt?: number | FloatFieldRefInput<$PrismaModel>
-    gte?: number | FloatFieldRefInput<$PrismaModel>
-    not?: NestedFloatNullableFilter<$PrismaModel> | number | null
   }
 
   export type NestedDateTimeNullableWithAggregatesFilter<$PrismaModel = never> = {
@@ -20016,6 +20049,7 @@ export namespace Prisma {
   export type FacultadCreateWithoutCarrerasInput = {
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20028,6 +20062,7 @@ export namespace Prisma {
     id?: number
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20139,6 +20174,7 @@ export namespace Prisma {
   export type FacultadUpdateWithoutCarrerasInput = {
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -20151,6 +20187,7 @@ export namespace Prisma {
     id?: IntFieldUpdateOperationsInput | number
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -20490,6 +20527,7 @@ export namespace Prisma {
   export type FacultadCreateWithoutSyncLogsInput = {
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20502,6 +20540,7 @@ export namespace Prisma {
     id?: number
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20529,6 +20568,7 @@ export namespace Prisma {
   export type FacultadUpdateWithoutSyncLogsInput = {
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -20541,6 +20581,7 @@ export namespace Prisma {
     id?: IntFieldUpdateOperationsInput | number
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -20836,6 +20877,7 @@ export namespace Prisma {
   export type FacultadCreateWithoutSectoresInput = {
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20848,6 +20890,7 @@ export namespace Prisma {
     id?: number
     nombre: string
     codigo?: string | null
+    sector?: number | null
     sheetId?: string | null
     activa?: boolean
     createdAt?: Date | string
@@ -20875,6 +20918,7 @@ export namespace Prisma {
   export type FacultadUpdateWithoutSectoresInput = {
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
@@ -20887,6 +20931,7 @@ export namespace Prisma {
     id?: IntFieldUpdateOperationsInput | number
     nombre?: StringFieldUpdateOperationsInput | string
     codigo?: NullableStringFieldUpdateOperationsInput | string | null
+    sector?: NullableIntFieldUpdateOperationsInput | number | null
     sheetId?: NullableStringFieldUpdateOperationsInput | string | null
     activa?: BoolFieldUpdateOperationsInput | boolean
     createdAt?: DateTimeFieldUpdateOperationsInput | Date | string
