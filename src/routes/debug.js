@@ -283,7 +283,7 @@ router.get('/carreras', async (req, res) => {
       try {
         // 1. Primero verificar si columna sector existe, si no añadirla
         try {
-          await prisma.$executeRaw`ALTER TABLE facultad ADD COLUMN sector INT DEFAULT NULL`;
+          await prisma.$executeRaw`ALTER TABLE facultades ADD COLUMN sector INT DEFAULT NULL`;
           console.log('✅ Columna sector añadida');
         } catch (addColumnError) {
           // Si falla, probablemente ya existe
@@ -301,7 +301,7 @@ router.get('/carreras', async (req, res) => {
         ];
         
         for (const update of updates) {
-          await prisma.$executeRaw`UPDATE facultad SET sector = ${update.sector} WHERE codigo = ${update.codigo}`;
+          await prisma.$executeRaw`UPDATE facultades SET sector = ${update.sector} WHERE codigo = ${update.codigo}`;
           const verificar = await prisma.facultad.findMany({ where: { codigo: update.codigo } });
           resultados.push({
             codigo: update.codigo,
