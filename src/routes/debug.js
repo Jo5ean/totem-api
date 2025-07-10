@@ -281,9 +281,14 @@ router.get('/carreras', async (req, res) => {
       console.log('🔧 EJECUTANDO CORRECCIÓN DE SECTORES...');
       
       try {
-        // 1. Primero añadir columna sector si no existe
-        await prisma.$executeRaw`ALTER TABLE facultad ADD COLUMN IF NOT EXISTS sector INT DEFAULT NULL`;
-        console.log('✅ Columna sector añadida/verificada');
+        // 1. Primero verificar si columna sector existe, si no añadirla
+        try {
+          await prisma.$executeRaw`ALTER TABLE facultad ADD COLUMN sector INT DEFAULT NULL`;
+          console.log('✅ Columna sector añadida');
+        } catch (addColumnError) {
+          // Si falla, probablemente ya existe
+          console.log('ℹ️ Columna sector ya existe o error:', addColumnError.message);
+        }
         
         const resultados = [];
         
