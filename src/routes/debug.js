@@ -279,34 +279,47 @@ router.get('/carreras', async (req, res) => {
     // CORRECCIÓN TEMPORAL DE SECTORES
     if (fix === 'sectores') {
       console.log('🔧 EJECUTANDO CORRECCIÓN DE SECTORES...');
-      const resultados = [];
       
-      // Actualizar sectores según CSV del usuario
-      const updates = [
-        { codigo: 'CEA', sector: 2, nombre: 'ECONOMÍA Y ADMINISTRACIÓN' },
-        { codigo: 'CJ', sector: 3, nombre: 'CIENCIAS JURÍDICAS' },
-        { codigo: 'ING', sector: 4, nombre: 'INGENIERÍA' },
-        { codigo: 'EE', sector: 21, nombre: 'FACULTAD DE EDUCACIÓN' }
-      ];
-      
-      for (const update of updates) {
-        const result = await prisma.facultad.updateMany({
-          where: { codigo: update.codigo },
-          data: { sector: update.sector }
+      try {
+        // 1. Primero añadir columna sector si no existe
+        await prisma.$executeRaw`ALTER TABLE facultad ADD COLUMN IF NOT EXISTS sector INT DEFAULT NULL`;
+        console.log('✅ Columna sector añadida/verificada');
+        
+        const resultados = [];
+        
+        // 2. Actualizar sectores según CSV del usuario
+        const updates = [
+          { codigo: 'CEA', sector: 2, nombre: 'ECONOMÍA Y ADMINISTRACIÓN' },
+          { codigo: 'CJ', sector: 3, nombre: 'CIENCIAS JURÍDICAS' },
+          { codigo: 'ING', sector: 4, nombre: 'INGENIERÍA' },
+          { codigo: 'EE', sector: 21, nombre: 'FACULTAD DE EDUCACIÓN' }
+        ];
+        
+        for (const update of updates) {
+          await prisma.$executeRaw`UPDATE facultad SET sector = ${update.sector} WHERE codigo = ${update.codigo}`;
+          const verificar = await prisma.facultad.findMany({ where: { codigo: update.codigo } });
+          resultados.push({
+            codigo: update.codigo,
+            nombre: update.nombre,
+            sector: update.sector,
+            actualizados: verificar.length
+          });
+        }
+        
+        return res.status(200).json({
+          success: true,
+          message: 'Sectores corregidos exitosamente',
+          resultados
         });
-        resultados.push({
-          codigo: update.codigo,
-          nombre: update.nombre,
-          sector: update.sector,
-          actualizados: result.count
+        
+      } catch (sectorError) {
+        console.error('Error en corrección de sectores:', sectorError);
+        return res.status(500).json({
+          success: false,
+          error: 'Error corrigiendo sectores',
+          message: sectorError.message
         });
       }
-      
-      return res.status(200).json({
-        success: true,
-        message: 'Sectores corregidos exitosamente',
-        resultados
-      });
     }
     
     console.log('🔍 Obteniendo diagnóstico de carreras...');
