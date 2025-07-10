@@ -543,12 +543,18 @@ class TotemService {
         let facultadParaCarrera = null;
         if (sectorCorrespondiente) {
           facultadParaCarrera = await this.mapSectorToFacultad(sectorCorrespondiente);
+          console.log(`🔍 Mapeo sector "${sectorCorrespondiente}" → Facultad: ${facultadParaCarrera?.nombre || 'NO ENCONTRADA'}`);
         }
         
-        // Si no se encuentra facultad, usar la primera disponible como fallback
+        // 🚨 NO MÁS FALLBACK AUTOMÁTICO - EXIGIR MAPEO CORRECTO
         if (!facultadParaCarrera) {
-          const primeraFacultad = await prisma.facultad.findFirst({ where: { activa: true } });
-          facultadParaCarrera = primeraFacultad;
+          console.error(`❌ ERROR CRÍTICO: Sector "${sectorCorrespondiente}" para carrera "${carreraCode}" NO tiene facultad mapeada`);
+          console.error(`   Este error debe corregirse antes de continuar la sincronización`);
+          console.error(`   Usa el endpoint de mapeo de sectores para corregir esto`);
+          
+          // Saltear esta carrera en lugar de asignar incorrectamente
+          console.log(`⏭️ Saltando carrera "${carreraCode}" hasta que se corrija el mapeo`);
+          continue;
         }
         
         // Buscar si ya existe una carrera con este código en la BD
