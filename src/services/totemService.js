@@ -225,15 +225,16 @@ class TotemService {
 
   async mapSectorToFacultad(sector) {
     try {
-      const mapping = await prisma.sectorFacultad.findFirst({
+      // NUEVA LÓGICA DIRECTA: buscar facultad por sector directamente
+      const facultad = await prisma.facultad.findFirst({
         where: { 
-          sector: sector.toString(),
-          activo: true 
-        },
-        include: { facultad: true }
+          sector: parseInt(sector),
+          activa: true 
+        }
       });
       
-      return mapping?.facultad || null;
+      console.log(`🎯 Mapeo directo: Sector ${sector} → ${facultad?.nombre || 'NO ENCONTRADA'}`);
+      return facultad || null;
     } catch (error) {
       console.error('Error mapeando sector:', error);
       return null;
