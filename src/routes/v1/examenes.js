@@ -749,6 +749,119 @@ router.put('/:id/cambiar-aula', async (req, res) => {
   }
 });
 
+// DELETE /api/v1/examenes/:id/asignar-aula - Eliminar asignación de aula
+router.delete('/:id/asignar-aula', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Validar ID del examen
+    const examenId = parseInt(id);
+    if (isNaN(examenId) || examenId <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'ID inválido',
+        message: `El ID del examen debe ser un número válido. Recibido: "${id}"`
+      });
+    }
+    
+    // Verificar que el examen existe y tiene aula asignada
+    const examen = await prisma.examen.findUnique({
+      where: { id: examenId },
+      include: {
+        carrera: {
+          include: { facultad: true }
+        },
+        aula: true
+      }
+    });
+
+    if (!examen) {
+      return res.status(404).json({
+        success: false,
+        error: 'Examen no encontrado',
+        message: `No se encontró examen con ID ${examenId}`
+      });
+    }
+
+    if (!examen.aulaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'El examen no tiene aula asignada',
+        message: 'No se puede eliminar una asignación que no existe'
+      });
+    }
+
+    // Obtener datos del aula antes de quitar asignación
+    const aulaAnterior = examen.aula;
+    const cantidadInscriptos = examen.cantidadInscriptos || 0;
+
+    // Eliminar asignación y actualizar contador de alumnos en transacción
+    const [examenActualizado] = await prisma.$transaction([
+      prisma.examen.update({
+        where: { id: examenId },
+        data: {
+          aulaId: null,
+          observaciones: 'Asignación de aula eliminada',
+          updatedAt: new Date()
+        },
+        include: {
+          carrera: {
+            include: { facultad: true }
+          }
+        }
+      }),
+      prisma.aula.update({
+        where: { id: examen.aulaId },
+        data: {
+          alumnosAsignados: {
+            decrement: cantidadInscriptos
+          }
+        }
+      })
+    ]);
+
+    console.log(`🗑️ Asignación eliminada: Examen ${examenId} → Sin aula (${cantidadInscriptos} alumnos liberados)`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Asignación de aula eliminada exitosamente',
+      data: {
+        examen: {
+          id: examenActualizado.id,
+          nombre: examenActualizado.nombreMateria,
+          fecha: examenActualizado.fecha?.toISOString().split('T')[0],
+          hora: examenActualizado.hora?.toTimeString().split(' ')[0],
+          inscriptos: cantidadInscriptos,
+          carrera: {
+            nombre: examenActualizado.carrera.nombre,
+            facultad: examenActualizado.carrera.facultad.nombre
+          },
+          aula: null
+        },
+        eliminacion: {
+          realizada: true,
+          timestamp: new Date().toISOString(),
+          alumnosLiberados: cantidadInscriptos,
+          aulaAnterior: {
+            id: aulaAnterior.id,
+            nombre: aulaAnterior.nombre,
+            capacidad: aulaAnterior.capacidad
+          }
+        }
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Error eliminando asignación:', error);
+    
+    return res.status(500).json({
+      success: false,
+      error: 'Error interno del servidor',
+      message: error.message
+    });
+  }
+});
+
 // GET /api/v1/examenes/:id - Obtener examen por ID (DEBE IR AL FINAL)
 router.get('/:id', async (req, res) => {
   try {
