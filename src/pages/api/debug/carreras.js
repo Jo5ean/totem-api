@@ -7,6 +7,11 @@ export default async function handler(req, res) {
 
   try {
     const { facultadId, fix } = req.query;
+    
+    console.log('=== DEBUG CARRERAS ===');
+    console.log('Query params:', req.query);
+    console.log('Fix parameter:', fix);
+    console.log('Fix === sectores:', fix === 'sectores');
 
     // CORRECCIÓN TEMPORAL DE SECTORES
     if (fix === 'sectores') {

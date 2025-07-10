@@ -6,7 +6,7 @@ const postData = JSON.stringify({});
 const options = {
   hostname: 'totem-api-production.up.railway.app',
   port: 443,
-  path: '/api/debug/carreras',
+  path: '/api/debug/carreras?fix=sectores',
   method: 'GET',
   headers: {
     'Content-Type': 'application/json',
