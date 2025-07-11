@@ -1,295 +1,278 @@
-import prisma from '../../../../../lib/db.js';
-import { withCors } from '../../../../../lib/cors.js';
+import { prisma } from '../../../../../lib/db.js';
 
-// 🆕 FUNCIÓN PARA ELIMINAR ASIGNACIÓN DE AULA
-async function eliminarAsignacionAula(req, res) {
-  const { id } = req.query;
+export default async function handler(req, res) {
+  const { method, query: { id } } = req;
 
-  // Validar parámetros
-  if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({
-      success: false,
-      error: 'ID de examen inválido'
-    });
+  // Validar que el ID sea un número
+  const examenId = parseInt(id);
+  if (isNaN(examenId)) {
+    return res.status(400).json({ error: 'ID de examen inválido' });
   }
 
   try {
-    // 1. Verificar que el examen existe y tiene aula asignada
-    const examen = await prisma.examen.findUnique({
-      where: { id: parseInt(id) },
-      include: {
-        carrera: {
-          include: { facultad: true }
-        },
-        aula: true
-      }
-    });
-
-    if (!examen) {
-      return res.status(404).json({
-        success: false,
-        error: 'Examen no encontrado'
-      });
+    switch (method) {
+      case 'POST':
+        return await asignarAula(req, res, examenId);
+      case 'DELETE':
+        return await desasignarAula(req, res, examenId);
+      default:
+        res.setHeader('Allow', ['POST', 'DELETE']);
+        return res.status(405).json({ error: `Método ${method} no permitido` });
     }
-
-    if (!examen.aulaId) {
-      return res.status(400).json({
-        success: false,
-        error: 'El examen no tiene aula asignada'
-      });
-    }
-
-    // 2. Obtener datos del aula antes de quitar asignación
-    const aulaAnterior = examen.aula;
-    const cantidadInscriptos = examen.cantidadInscriptos || 0;
-
-    // 3. Eliminar asignación y actualizar contador de alumnos
-    const [examenActualizado] = await prisma.$transaction([
-      prisma.examen.update({
-        where: { id: parseInt(id) },
-        data: {
-          aulaId: null,
-          updatedAt: new Date()
-        },
-        include: {
-          carrera: {
-            include: { facultad: true }
-          }
-        }
-      }),
-      prisma.aula.update({
-        where: { id: examen.aulaId },
-        data: {
-          alumnosAsignados: {
-            decrement: cantidadInscriptos
-          }
-        }
-      })
-    ]);
-
-    console.log(`🗑️ Asignación eliminada: Examen ${id} → Sin aula (${cantidadInscriptos} alumnos liberados)`);
-
-    return res.status(200).json({
-      success: true,
-      message: `Asignación de aula eliminada exitosamente`,
-      data: {
-        examen: {
-          id: examenActualizado.id,
-          nombre: examenActualizado.nombreMateria,
-          fecha: examenActualizado.fecha?.toISOString().split('T')[0],
-          hora: examenActualizado.hora?.toTimeString().split(' ')[0],
-          inscriptos: cantidadInscriptos,
-          carrera: {
-            nombre: examenActualizado.carrera.nombre,
-            facultad: examenActualizado.carrera.facultad.nombre
-          },
-          aula: null
-        },
-        eliminacion: {
-          realizada: true,
-          timestamp: new Date().toISOString(),
-          alumnosLiberados: cantidadInscriptos,
-          aulaAnterior: {
-            id: aulaAnterior.id,
-            nombre: aulaAnterior.nombre,
-            capacidad: aulaAnterior.capacidad
-          }
-        }
-      }
-    });
-
   } catch (error) {
-    console.error('❌ Error eliminando asignación:', error);
-    
-    return res.status(500).json({
-      success: false,
+    console.error('Error en asignación de aula:', error);
+    return res.status(500).json({ 
       error: 'Error interno del servidor',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      message: error.message 
     });
+  } finally {
+    await prisma.$disconnect();
   }
 }
 
-async function handler(req, res) {
-
-  // 🆕 SOPORTE PARA DELETE (borrar asignación)
-  if (req.method === 'DELETE') {
-    return await eliminarAsignacionAula(req, res);
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({
-      success: false,
-      error: 'Método no permitido. Usa POST para asignar o DELETE para borrar asignación.'
-    });
-  }
-
-  const { id } = req.query;
-  const { aulaId, observaciones } = req.body;
-
-  // Validar parámetros
-  if (!id || isNaN(parseInt(id))) {
-    return res.status(400).json({
-      success: false,
-      error: 'ID de examen inválido'
-    });
-  }
-
-  if (!aulaId || isNaN(parseInt(aulaId))) {
-    return res.status(400).json({
-      success: false,
-      error: 'ID de aula inválido'
-    });
-  }
-
+// POST /api/v1/examenes/[id]/asignar-aula - Asignar aula a examen
+async function asignarAula(req, res, examenId) {
   try {
-    // 1. Verificar que el examen existe
+    const { aulaId, forzar = false } = req.body;
+
+    // Validaciones básicas
+    if (!aulaId) {
+      return res.status(400).json({ error: 'aulaId es requerido' });
+    }
+
+    const aulaIdNum = parseInt(aulaId);
+    if (isNaN(aulaIdNum)) {
+      return res.status(400).json({ error: 'aulaId debe ser un número válido' });
+    }
+
+    // Verificar que el examen existe
     const examen = await prisma.examen.findUnique({
-      where: { id: parseInt(id) },
+      where: { id: examenId },
       include: {
-        carrera: {
-          include: { facultad: true }
-        },
-        aula: true
+        carrera: true,
+        facultad: true,
+        estudianteExamenes: {
+          select: { id: true }
+        }
       }
     });
 
     if (!examen) {
-      return res.status(404).json({
-        success: false,
-        error: 'Examen no encontrado'
-      });
+      return res.status(404).json({ error: 'Examen no encontrado' });
     }
 
-    // 2. Verificar que el aula existe y está disponible
+    // Verificar que el aula existe y está activa
     const aula = await prisma.aula.findUnique({
-      where: { id: parseInt(aulaId) }
+      where: { id: aulaIdNum }
     });
 
     if (!aula) {
-      return res.status(404).json({
-        success: false,
-        error: 'Aula no encontrada'
+      return res.status(404).json({ error: 'Aula no encontrada' });
+    }
+
+    if (!aula.activa) {
+      return res.status(400).json({ error: 'El aula no está activa' });
+    }
+
+    // Verificar capacidad vs inscriptos
+    const cantidadInscriptos = examen.estudianteExamenes.length;
+    
+    if (cantidadInscriptos > aula.capacidad && !forzar) {
+      return res.status(400).json({ 
+        error: 'Capacidad insuficiente',
+        message: `El aula tiene capacidad para ${aula.capacidad} personas, pero el examen tiene ${cantidadInscriptos} inscriptos`,
+        sugerencia: 'Usa forzar=true para asignar de todas formas',
+        capacidad_aula: aula.capacidad,
+        inscriptos_examen: cantidadInscriptos
       });
     }
 
-    if (!aula.disponible) {
-      return res.status(400).json({
-        success: false,
-        error: 'El aula seleccionada no está disponible'
-      });
-    }
-
-    // 3. Obtener número de inscriptos del examen
-    const cantidadInscriptos = examen.cantidadInscriptos || 0;
-
-    // 4. Si el examen ya tenía aula asignada, restar los alumnos del aula anterior
-    if (examen.aulaId && examen.aulaId !== parseInt(aulaId)) {
-      await prisma.aula.update({
-        where: { id: examen.aulaId },
-        data: {
-          alumnosAsignados: {
-            decrement: cantidadInscriptos
-          }
-        }
-      });
-    }
-
-    // 5. Asignar el aula al examen y actualizar contador de alumnos
-    const [examenActualizado] = await prisma.$transaction([
-      prisma.examen.update({
-        where: { id: parseInt(id) },
-        data: {
-          aulaId: parseInt(aulaId),
-          observaciones: observaciones || examen.observaciones,
-          updatedAt: new Date()
+    // Verificar disponibilidad del aula en la fecha/hora
+    if (examen.fecha && examen.hora) {
+      const horaString = examen.hora.toTimeString().substring(0, 5); // HH:MM
+      
+      // Buscar conflictos en la misma fecha y hora
+      const conflictos = await prisma.examen.findMany({
+        where: {
+          aulaId: aulaIdNum,
+          fecha: examen.fecha,
+          hora: examen.hora,
+          id: { not: examenId }, // Excluir el examen actual
+          activo: true
         },
         include: {
-          carrera: {
-            include: { facultad: true }
-          },
-          aula: true
+          carrera: true
         }
-      }),
-      prisma.aula.update({
-        where: { id: parseInt(aulaId) },
-        data: {
-          alumnosAsignados: {
-            increment: cantidadInscriptos
-          }
-        }
-      })
-    ]);
+      });
 
-    // Obtener estadísticas actualizadas del aula
-    const aulaActualizada = await prisma.aula.findUnique({
-      where: { id: parseInt(aulaId) },
-      include: {
-        examenes: {
-          where: { activo: true },
-          select: {
-            id: true,
-            nombreMateria: true,
-            cantidadInscriptos: true
+      if (conflictos.length > 0 && !forzar) {
+        return res.status(400).json({ 
+          error: 'Conflicto de horario',
+          message: `El aula ya está ocupada en esa fecha y hora`,
+          conflictos: conflictos.map(c => ({
+            id: c.id,
+            materia: c.nombreMateria,
+            carrera: c.carrera.nombre,
+            inscriptos: c.cantidadInscriptos
+          })),
+          sugerencia: 'Usa forzar=true para asignar de todas formas'
+        });
+      }
+
+      // Actualizar/crear ocupación del aula
+      const ocupacionExistente = await prisma.ocupacionAula.findUnique({
+        where: {
+          aula_id_fecha_hora: {
+            aula_id: aulaIdNum,
+            fecha: examen.fecha,
+            hora: horaString
           }
         }
+      });
+
+      if (ocupacionExistente) {
+        // Actualizar ocupación existente
+        await prisma.ocupacionAula.update({
+          where: { id: ocupacionExistente.id },
+          data: {
+            utilizados: ocupacionExistente.utilizados + cantidadInscriptos,
+            capacidad_teorica: aula.capacidad
+          }
+        });
+      } else {
+        // Crear nueva ocupación
+        await prisma.ocupacionAula.create({
+          data: {
+            aula_id: aulaIdNum,
+            fecha: examen.fecha,
+            hora: horaString,
+            utilizados: cantidadInscriptos,
+            capacidad_teorica: aula.capacidad,
+            observaciones: `Examen: ${examen.nombreMateria} - ${examen.carrera.nombre}`
+          }
+        });
+      }
+    }
+
+    // Asignar aula al examen
+    const examenActualizado = await prisma.examen.update({
+      where: { id: examenId },
+      data: { 
+        aulaId: aulaIdNum,
+        cantidadInscriptos: cantidadInscriptos
+      },
+      include: {
+        aula: true,
+        carrera: true,
+        facultad: true
       }
     });
 
-    console.log(`✅ Aula asignada: Examen ${id} → Aula ${aula.nombre} (${cantidadInscriptos} alumnos)`);
-
     return res.status(200).json({
       success: true,
+      examen: examenActualizado,
       message: `Aula "${aula.nombre}" asignada exitosamente`,
-      data: {
-        examen: {
-          id: examenActualizado.id,
-          nombre: examenActualizado.nombreMateria,
-          fecha: examenActualizado.fecha?.toISOString().split('T')[0],
-          hora: examenActualizado.hora?.toTimeString().split(' ')[0],
-          inscriptos: cantidadInscriptos,
-          carrera: {
-            nombre: examenActualizado.carrera.nombre,
-            facultad: examenActualizado.carrera.facultad.nombre
-          },
-          aula: {
-            id: examenActualizado.aula.id,
-            nombre: examenActualizado.aula.nombre,
-            capacidad: examenActualizado.aula.capacidad,
-            ubicacion: examenActualizado.aula.ubicacion,
-            alumnosAsignados: aulaActualizada.alumnosAsignados
-          },
-          observaciones: examenActualizado.observaciones
-        },
-        asignacion: {
-          realizada: true,
-          timestamp: new Date().toISOString(),
-          inscriptosAsignados: cantidadInscriptos,
-          aulaAnterior: examen.aula ? {
-            id: examen.aula.id,
-            nombre: examen.aula.nombre
-          } : null,
-          aulaNueva: {
-            id: aula.id,
-            nombre: aula.nombre,
-            capacidad: aula.capacidad,
-            alumnosAsignados: aulaActualizada.alumnosAsignados,
-            resumenUso: `${aulaActualizada.alumnosAsignados} alumnos asignados de ${aula.capacidad} disponibles`
-          }
-        }
+      asignacion: {
+        aula: aula.nombre,
+        capacidad: aula.capacidad,
+        inscriptos: cantidadInscriptos,
+        disponibilidad: aula.capacidad - cantidadInscriptos,
+        porcentaje_ocupacion: Math.round((cantidadInscriptos / aula.capacidad) * 100)
       }
     });
 
   } catch (error) {
-    console.error('❌ Error asignando aula:', error);
-    
-    return res.status(500).json({
-      success: false,
-      error: 'Error interno del servidor',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    console.error('Error asignando aula:', error);
+    return res.status(500).json({ 
+      error: 'Error asignando aula',
+      message: error.message 
     });
   }
 }
 
-export default withCors(handler); 
+// DELETE /api/v1/examenes/[id]/asignar-aula - Desasignar aula de examen
+async function desasignarAula(req, res, examenId) {
+  try {
+    // Verificar que el examen existe y tiene aula asignada
+    const examen = await prisma.examen.findUnique({
+      where: { id: examenId },
+      include: {
+        aula: true,
+        estudianteExamenes: {
+          select: { id: true }
+        }
+      }
+    });
+
+    if (!examen) {
+      return res.status(404).json({ error: 'Examen no encontrado' });
+    }
+
+    if (!examen.aulaId) {
+      return res.status(400).json({ error: 'El examen no tiene aula asignada' });
+    }
+
+    const aulaAnterior = examen.aula;
+    const cantidadInscriptos = examen.estudianteExamenes.length;
+
+    // Actualizar ocupación del aula si existe
+    if (examen.fecha && examen.hora) {
+      const horaString = examen.hora.toTimeString().substring(0, 5);
+      
+      const ocupacionExistente = await prisma.ocupacionAula.findUnique({
+        where: {
+          aula_id_fecha_hora: {
+            aula_id: examen.aulaId,
+            fecha: examen.fecha,
+            hora: horaString
+          }
+        }
+      });
+
+      if (ocupacionExistente) {
+        const nuevosUtilizados = Math.max(0, ocupacionExistente.utilizados - cantidadInscriptos);
+        
+        if (nuevosUtilizados === 0) {
+          // Eliminar ocupación si no queda nadie
+          await prisma.ocupacionAula.delete({
+            where: { id: ocupacionExistente.id }
+          });
+        } else {
+          // Actualizar ocupación
+          await prisma.ocupacionAula.update({
+            where: { id: ocupacionExistente.id },
+            data: { utilizados: nuevosUtilizados }
+          });
+        }
+      }
+    }
+
+    // Desasignar aula del examen
+    const examenActualizado = await prisma.examen.update({
+      where: { id: examenId },
+      data: { aulaId: null },
+      include: {
+        carrera: true,
+        facultad: true
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      examen: examenActualizado,
+      message: `Aula "${aulaAnterior.nombre}" desasignada exitosamente`,
+      aula_anterior: {
+        id: aulaAnterior.id,
+        nombre: aulaAnterior.nombre,
+        capacidad: aulaAnterior.capacidad
+      }
+    });
+
+  } catch (error) {
+    console.error('Error desasignando aula:', error);
+    return res.status(500).json({ 
+      error: 'Error desasignando aula',
+      message: error.message 
+    });
+  }
+} 

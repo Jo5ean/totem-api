@@ -115,7 +115,7 @@ export default async function handler(req, res) {
           id: examen.aula.id,
           nombre: examen.aula.nombre,
           capacidad: examen.aula.capacidad,
-          ubicacion: examen.aula.ubicacion
+          sede: examen.aula.sede
         } : null,
         tipoExamen: examen.tipoExamen,
         modalidad: examen.modalidadExamen || 'presencial',
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
 
     // Obtener estadísticas de aulas disponibles
     const aulas = await prisma.aula.findMany({
-      where: { disponible: true },
+      where: { activa: true },
       orderBy: { capacidad: 'asc' }
     });
 
@@ -167,7 +167,7 @@ export default async function handler(req, res) {
           id: a.id,
           nombre: a.nombre,
           capacidad: a.capacidad,
-          ubicacion: a.ubicacion
+          sede: a.sede
         })),
         resumen: {
           totalExamenes: examenes.length,

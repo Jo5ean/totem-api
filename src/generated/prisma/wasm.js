@@ -124,7 +124,6 @@ exports.Prisma.FacultadScalarFieldEnum = {
   id: 'id',
   nombre: 'nombre',
   codigo: 'codigo',
-  sector: 'sector',
   sheetId: 'sheetId',
   activa: 'activa',
   createdAt: 'createdAt',
@@ -144,37 +143,33 @@ exports.Prisma.CarreraScalarFieldEnum = {
 exports.Prisma.ExamenScalarFieldEnum = {
   id: 'id',
   carreraId: 'carreraId',
+  facultadId: 'facultadId',
   aulaId: 'aulaId',
+  materia_codigo: 'materia_codigo',
   nombreMateria: 'nombreMateria',
+  areatema: 'areatema',
   fecha: 'fecha',
   hora: 'hora',
   tipoExamen: 'tipoExamen',
+  modalidadExamen: 'modalidadExamen',
+  catedra: 'catedra',
+  docente: 'docente',
   monitoreo: 'monitoreo',
+  control_cargo: 'control_cargo',
   materialPermitido: 'materialPermitido',
   observaciones: 'observaciones',
+  observaciones_adicionales: 'observaciones_adicionales',
+  url: 'url',
+  acta_numero: 'acta_numero',
+  cantidadInscriptos: 'cantidadInscriptos',
+  fechaUltConsulta: 'fechaUltConsulta',
+  requierePc: 'requierePc',
   activo: 'activo',
   createdAt: 'createdAt',
-  updatedAt: 'updatedAt',
-  asignacionAuto: 'asignacionAuto',
-  criterioAsignacion: 'criterioAsignacion',
-  modalidadExamen: 'modalidadExamen',
-  requierePc: 'requierePc',
-  cantidadInscriptos: 'cantidadInscriptos',
-  fechaUltConsulta: 'fechaUltConsulta'
-};
-
-exports.Prisma.SyncLogScalarFieldEnum = {
-  id: 'id',
-  facultadId: 'facultadId',
-  tipoOperacion: 'tipoOperacion',
-  resultado: 'resultado',
-  mensaje: 'mensaje',
-  registrosProcesados: 'registrosProcesados',
-  createdAt: 'createdAt'
+  updatedAt: 'updatedAt'
 };
 
 exports.Prisma.EstudianteScalarFieldEnum = {
-  id: 'id',
   dni: 'dni',
   nombre: 'nombre',
   apellido: 'apellido',
@@ -188,10 +183,21 @@ exports.Prisma.EstudianteScalarFieldEnum = {
 exports.Prisma.AulaScalarFieldEnum = {
   id: 'id',
   nombre: 'nombre',
+  sede: 'sede',
   capacidad: 'capacidad',
-  ubicacion: 'ubicacion',
-  disponible: 'disponible',
-  alumnosAsignados: 'alumnosAsignados',
+  activa: 'activa',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt'
+};
+
+exports.Prisma.OcupacionAulaScalarFieldEnum = {
+  id: 'id',
+  aula_id: 'aula_id',
+  fecha: 'fecha',
+  hora: 'hora',
+  utilizados: 'utilizados',
+  capacidad_teorica: 'capacidad_teorica',
+  observaciones: 'observaciones',
   createdAt: 'createdAt',
   updatedAt: 'updatedAt'
 };
@@ -204,11 +210,12 @@ exports.Prisma.TotemDataScalarFieldEnum = {
   processed: 'processed'
 };
 
-exports.Prisma.ActaExamenScalarFieldEnum = {
+exports.Prisma.EstudianteExamenScalarFieldEnum = {
   id: 'id',
-  examenId: 'examenId',
-  estudianteId: 'estudianteId',
-  presente: 'presente',
+  examen_id: 'examen_id',
+  dni: 'dni',
+  asistencia: 'asistencia',
+  aprobado: 'aprobado',
   nota: 'nota',
   observaciones: 'observaciones',
   createdAt: 'createdAt',
@@ -253,33 +260,6 @@ exports.Prisma.ExamenTotemScalarFieldEnum = {
   updatedAt: 'updatedAt'
 };
 
-exports.Prisma.AulaConfiguracionScalarFieldEnum = {
-  id: 'id',
-  nombre: 'nombre',
-  tipo: 'tipo',
-  capacidadMaxima: 'capacidadMaxima',
-  recursoEspecial: 'recursoEspecial',
-  cantidadRecurso: 'cantidadRecurso',
-  esParaInformatica: 'esParaInformatica',
-  prioridadAsignacion: 'prioridadAsignacion',
-  disponible: 'disponible',
-  observaciones: 'observaciones',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
-};
-
-exports.Prisma.ConfiguracionVisualScalarFieldEnum = {
-  id: 'id',
-  backgroundImage: 'backgroundImage',
-  titulo: 'titulo',
-  subtitulo: 'subtitulo',
-  colorPrimario: 'colorPrimario',
-  colorSecundario: 'colorSecundario',
-  activa: 'activa',
-  createdAt: 'createdAt',
-  updatedAt: 'updatedAt'
-};
-
 exports.Prisma.SortOrder = {
   asc: 'asc',
   desc: 'desc'
@@ -306,19 +286,20 @@ exports.Prisma.CarreraOrderByRelevanceFieldEnum = {
 };
 
 exports.Prisma.ExamenOrderByRelevanceFieldEnum = {
+  materia_codigo: 'materia_codigo',
   nombreMateria: 'nombreMateria',
+  areatema: 'areatema',
   tipoExamen: 'tipoExamen',
+  modalidadExamen: 'modalidadExamen',
+  catedra: 'catedra',
+  docente: 'docente',
   monitoreo: 'monitoreo',
+  control_cargo: 'control_cargo',
   materialPermitido: 'materialPermitido',
   observaciones: 'observaciones',
-  criterioAsignacion: 'criterioAsignacion',
-  modalidadExamen: 'modalidadExamen'
-};
-
-exports.Prisma.SyncLogOrderByRelevanceFieldEnum = {
-  tipoOperacion: 'tipoOperacion',
-  resultado: 'resultado',
-  mensaje: 'mensaje'
+  observaciones_adicionales: 'observaciones_adicionales',
+  url: 'url',
+  acta_numero: 'acta_numero'
 };
 
 exports.Prisma.EstudianteOrderByRelevanceFieldEnum = {
@@ -331,7 +312,12 @@ exports.Prisma.EstudianteOrderByRelevanceFieldEnum = {
 
 exports.Prisma.AulaOrderByRelevanceFieldEnum = {
   nombre: 'nombre',
-  ubicacion: 'ubicacion'
+  sede: 'sede'
+};
+
+exports.Prisma.OcupacionAulaOrderByRelevanceFieldEnum = {
+  hora: 'hora',
+  observaciones: 'observaciones'
 };
 
 exports.Prisma.JsonNullValueFilter = {
@@ -349,7 +335,8 @@ exports.Prisma.TotemDataOrderByRelevanceFieldEnum = {
   sheetName: 'sheetName'
 };
 
-exports.Prisma.ActaExamenOrderByRelevanceFieldEnum = {
+exports.Prisma.EstudianteExamenOrderByRelevanceFieldEnum = {
+  dni: 'dni',
   observaciones: 'observaciones'
 };
 
@@ -375,36 +362,19 @@ exports.Prisma.ExamenTotemOrderByRelevanceFieldEnum = {
   controlTotem: 'controlTotem'
 };
 
-exports.Prisma.AulaConfiguracionOrderByRelevanceFieldEnum = {
-  nombre: 'nombre',
-  tipo: 'tipo',
-  recursoEspecial: 'recursoEspecial',
-  observaciones: 'observaciones'
-};
-
-exports.Prisma.ConfiguracionVisualOrderByRelevanceFieldEnum = {
-  backgroundImage: 'backgroundImage',
-  titulo: 'titulo',
-  subtitulo: 'subtitulo',
-  colorPrimario: 'colorPrimario',
-  colorSecundario: 'colorSecundario'
-};
-
 
 exports.Prisma.ModelName = {
   Facultad: 'Facultad',
   Carrera: 'Carrera',
   Examen: 'Examen',
-  SyncLog: 'SyncLog',
   Estudiante: 'Estudiante',
   Aula: 'Aula',
+  OcupacionAula: 'OcupacionAula',
   TotemData: 'TotemData',
-  ActaExamen: 'ActaExamen',
+  EstudianteExamen: 'EstudianteExamen',
   SectorFacultad: 'SectorFacultad',
   CarreraTotem: 'CarreraTotem',
-  ExamenTotem: 'ExamenTotem',
-  AulaConfiguracion: 'AulaConfiguracion',
-  ConfiguracionVisual: 'ConfiguracionVisual'
+  ExamenTotem: 'ExamenTotem'
 };
 
 /**

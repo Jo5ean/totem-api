@@ -1,127 +1,128 @@
-import prisma from '../../../../lib/db.js';
-import { withCors } from '../../../../lib/cors.js';
+import { prisma } from '../../../../lib/db.js';
 
-async function handler(req, res) {
+export default async function handler(req, res) {
+  const { method } = req;
 
   try {
-    switch (req.method) {
+    switch (method) {
       case 'GET':
-        return await handleGet(req, res);
+        return await getAulas(req, res);
       case 'POST':
-        return await handlePost(req, res);
+        return await createAula(req, res);
       default:
-        return res.status(405).json({
-          success: false,
-          error: `Método ${req.method} no permitido`,
-          allowedMethods: ['GET', 'POST']
-        });
+        res.setHeader('Allow', ['GET', 'POST']);
+        return res.status(405).json({ error: `Método ${method} no permitido` });
     }
   } catch (error) {
-    console.error('Error en aulas:', error);
-    return res.status(500).json({
-      success: false,
+    console.error('Error en endpoint aulas:', error);
+    return res.status(500).json({ 
       error: 'Error interno del servidor',
-      message: error.message
+      message: error.message 
+    });
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+// GET /api/v1/aulas - Obtener todas las aulas
+async function getAulas(req, res) {
+  try {
+    const { activa, sede } = req.query;
+    
+    const filtros = {};
+    
+    // Filtrar por activa
+    if (activa !== undefined) {
+      filtros.activa = activa === 'true';
+    }
+    
+    // Filtrar por sede
+    if (sede) {
+      filtros.sede = sede;
+    }
+    
+    const aulas = await prisma.aula.findMany({
+      where: filtros,
+      orderBy: [
+        { sede: 'asc' },
+        { nombre: 'asc' }
+      ]
+    });
+    
+    // Sin estadísticas por ahora - solo devolver aulas básicas
+    const aulasConEstadisticas = aulas.map(aula => ({
+      ...aula
+    }));
+    
+    return res.status(200).json({
+      success: true,
+      aulas: aulasConEstadisticas,
+      total: aulasConEstadisticas.length
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo aulas:', error);
+    return res.status(500).json({ 
+      error: 'Error obteniendo aulas',
+      message: error.message 
     });
   }
 }
 
-async function handleGet(req, res) {
-  const { page = 1, limit = 20, disponible, search } = req.query;
-  const pageNum = parseInt(page);
-  const limitNum = parseInt(limit);
-  const offset = (pageNum - 1) * limitNum;
-
-  // Construir filtros
-  const where = {};
-  if (disponible !== undefined) {
-    where.disponible = disponible === 'true';
-  }
-  if (search) {
-    where.OR = [
-      { nombre: { contains: search, mode: 'insensitive' } },
-      { ubicacion: { contains: search, mode: 'insensitive' } }
-    ];
-  }
-
-  const [aulas, total] = await Promise.all([
-    prisma.aula.findMany({
-      where,
-      skip: offset,
-      take: limitNum,
-      include: {
-        _count: {
-          select: { examenes: true }
-        }
-      },
-      orderBy: { nombre: 'asc' }
-    }),
-    prisma.aula.count({ where })
-  ]);
-
-  // Agregar estadísticas de uso para cada aula
-  const aulasConEstadisticas = aulas.map(aula => ({
-    ...aula,
-    estadisticas: {
-      examenesAsignados: aula._count.examenes,
-      alumnosAsignados: aula.alumnosAsignados,
-      porcentajeUso: aula.capacidad ? Math.round((aula.alumnosAsignados / aula.capacidad) * 100) : 0
+// POST /api/v1/aulas - Crear nueva aula
+async function createAula(req, res) {
+  try {
+    const { nombre, sede, capacidad } = req.body;
+    
+    // Validaciones
+    if (!nombre || !sede || !capacidad) {
+      return res.status(400).json({ 
+        error: 'Datos requeridos faltantes',
+        required: ['nombre', 'sede', 'capacidad']
+      });
     }
-  }));
-
-  const totalPages = Math.ceil(total / limitNum);
-
-  return res.status(200).json({
-    success: true,
-    data: aulasConEstadisticas,
-    pagination: {
-      page: pageNum,
-      limit: limitNum,
-      total,
-      totalPages,
-      hasNext: pageNum < totalPages,
-      hasPrev: pageNum > 1
+    
+    if (capacidad <= 0) {
+      return res.status(400).json({ 
+        error: 'La capacidad debe ser mayor a 0'
+      });
     }
-  });
-}
-
-async function handlePost(req, res) {
-  const { nombre, capacidad, ubicacion, disponible = true } = req.body;
-
-  // Validaciones
-  if (!nombre) {
-    return res.status(400).json({
-      success: false,
-      error: 'El nombre del aula es requerido'
+    
+    // Verificar si ya existe un aula con el mismo nombre en la misma sede
+    const aulaExistente = await prisma.aula.findFirst({
+      where: {
+        nombre: nombre.trim(),
+        sede: sede.trim()
+      }
+    });
+    
+    if (aulaExistente) {
+      return res.status(400).json({ 
+        error: 'Ya existe un aula con ese nombre en la sede especificada'
+      });
+    }
+    
+    // Crear nueva aula
+    const nuevaAula = await prisma.aula.create({
+      data: {
+        nombre: nombre.trim(),
+        sede: sede.trim(),
+        capacidad: parseInt(capacidad),
+        activa: true
+      }
+    });
+    
+    return res.status(201).json({
+      success: true,
+      aula: nuevaAula,
+      message: 'Aula creada exitosamente'
+    });
+    
+  } catch (error) {
+    console.error('Error creando aula:', error);
+    return res.status(500).json({ 
+      error: 'Error creando aula',
+      message: error.message 
     });
   }
-
-  // Verificar que no exista aula con el mismo nombre
-  const existingAula = await prisma.aula.findUnique({
-    where: { nombre }
-  });
-
-  if (existingAula) {
-    return res.status(409).json({
-      success: false,
-      error: 'Ya existe un aula con ese nombre'
-    });
-  }
-
-  const aula = await prisma.aula.create({
-    data: {
-      nombre,
-      capacidad: capacidad ? parseInt(capacidad) : null,
-      ubicacion,
-      disponible
-    }
-  });
-
-  return res.status(201).json({
-    success: true,
-    data: aula,
-    message: 'Aula creada exitosamente'
-  });
-}
-
-export default withCors(handler); 
+} 

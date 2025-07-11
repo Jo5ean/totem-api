@@ -1,8 +1,9 @@
 import express from 'express';
 import prisma from '../../lib/db.js';
-import { formatearNombreAula } from '../../lib/helpers.js';
+import TotemService from '../../services/totemService.js';
 
 const router = express.Router();
+const totemService = new TotemService();
 
 // GET /api/v1/examenes - Obtener todos los exámenes
 router.get('/', async (req, res) => {
@@ -914,6 +915,260 @@ router.get('/:id', async (req, res) => {
     return res.status(500).json({
       success: false,
       error: 'Error obteniendo examen',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/v1/examenes/por-dni/:dni - Obtener exámenes de un estudiante específico
+router.get('/por-dni/:dni', async (req, res) => {
+  try {
+    const { dni } = req.params;
+    
+    console.log(`🔍 Buscando exámenes para DNI: ${dni}`);
+    
+    const estudianteExamenes = await prisma.estudianteExamen.findMany({
+      where: { dni: dni },
+      include: {
+        examen: {
+          include: {
+            carrera: true,
+            facultad: true,
+            aula: true,
+            examenTotem: true
+          }
+        },
+        estudiante: true
+      },
+      orderBy: {
+        examen: {
+          fecha: 'desc'
+        }
+      }
+    });
+    
+    if (estudianteExamenes.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: `No se encontraron exámenes para el DNI ${dni}`,
+        data: []
+      });
+    }
+    
+    // Formatear respuesta
+    const examenes = estudianteExamenes.map(rel => ({
+      examen: {
+        id: rel.examen.id,
+        nombreMateria: rel.examen.nombreMateria,
+        fecha: rel.examen.fecha,
+        hora: rel.examen.hora,
+        carrera: rel.examen.carrera.nombre,
+        facultad: rel.examen.facultad.nombre,
+        aula: rel.examen.aula ? rel.examen.aula.nombre : 'Sin asignar',
+        datosTotem: {
+          materiaTotem: rel.examen.examenTotem?.materiaTotem,
+          areaTemaTotem: rel.examen.examenTotem?.areaTemaTotem,
+          sectorTotem: rel.examen.examenTotem?.sectorTotem,
+          carreraTotem: rel.examen.examenTotem?.carreraTotem
+        }
+      },
+      estudiante: {
+        dni: rel.estudiante.dni,
+        nombre: rel.estudiante.nombre,
+        apellido: rel.estudiante.apellido
+      },
+      resultado: {
+        asistencia: rel.asistencia,
+        aprobado: rel.aprobado,
+        nota: rel.nota
+      }
+    }));
+    
+    return res.json({
+      success: true,
+      dni: dni,
+      totalExamenes: examenes.length,
+      data: examenes
+    });
+    
+  } catch (error) {
+    console.error('Error buscando exámenes por DNI:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error interno del servidor',
+      message: error.message
+    });
+  }
+});
+
+// POST /api/v1/examenes/:id/obtener-inscriptos - Obtener inscriptos desde UCASAL
+router.post('/:id/obtener-inscriptos', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    console.log(`🌐 Obteniendo inscriptos de UCASAL para examen ID: ${id}`);
+    
+    const resultado = await totemService.obtenerInscriptosUcasal(parseInt(id));
+    
+    return res.json({
+      success: true,
+      message: 'Inscriptos obtenidos exitosamente desde UCASAL',
+      data: resultado
+    });
+    
+  } catch (error) {
+    console.error('Error obteniendo inscriptos UCASAL:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error obteniendo inscriptos desde UCASAL',
+      message: error.message
+    });
+  }
+});
+
+// PUT /api/v1/examenes/:id/asignar-aula - Asignar aula manualmente (simulando backoffice)
+router.put('/:id/asignar-aula', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { aulaId } = req.body;
+    
+    if (!aulaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'aulaId es requerido'
+      });
+    }
+    
+    console.log(`🏢 Asignando aula ${aulaId} al examen ${id}`);
+    
+    // Verificar que el aula existe
+    const aula = await prisma.aula.findUnique({
+      where: { id: parseInt(aulaId) }
+    });
+    
+    if (!aula) {
+      return res.status(404).json({
+        success: false,
+        error: 'Aula no encontrada'
+      });
+    }
+    
+    // Obtener datos del examen
+    const examen = await prisma.examen.findUnique({
+      where: { id: parseInt(id) },
+      include: { estudianteExamenes: true }
+    });
+    
+    if (!examen) {
+      return res.status(404).json({
+        success: false,
+        error: 'Examen no encontrado'
+      });
+    }
+    
+    // Actualizar examen con aula
+    const examenActualizado = await prisma.examen.update({
+      where: { id: parseInt(id) },
+      data: { aulaId: parseInt(aulaId) },
+      include: {
+        carrera: true,
+        facultad: true,
+        aula: true,
+        examenTotem: true,
+        estudianteExamenes: {
+          include: { estudiante: true }
+        }
+      }
+    });
+    
+    // Crear/actualizar ocupación de aula
+    const horaStr = examen.hora ? 
+      `${examen.hora.getHours()}:${String(examen.hora.getMinutes()).padStart(2, '0')}` : 
+      '00:00';
+    
+    await prisma.ocupacionAula.upsert({
+      where: {
+        aula_id_fecha_hora: {
+          aula_id: parseInt(aulaId),
+          fecha: examen.fecha,
+          hora: horaStr
+        }
+      },
+      update: {
+        utilizados: examen.cantidadInscriptos || 0,
+        capacidad_teorica: aula.capacidad
+      },
+      create: {
+        aula_id: parseInt(aulaId),
+        fecha: examen.fecha,
+        hora: horaStr,
+        utilizados: examen.cantidadInscriptos || 0,
+        capacidad_teorica: aula.capacidad,
+        observaciones: examen.cantidadInscriptos > aula.capacidad ? 'SOBREOCUPADA' : null
+      }
+    });
+    
+    return res.json({
+      success: true,
+      message: `Aula ${aula.nombre} asignada exitosamente al examen`,
+      data: {
+        examen: examenActualizado,
+        ocupacion: {
+          aula: aula.nombre,
+          capacidad: aula.capacidad,
+          utilizados: examen.cantidadInscriptos || 0,
+          disponible: (aula.capacidad - (examen.cantidadInscriptos || 0)),
+          porcentajeOcupacion: Math.round(((examen.cantidadInscriptos || 0) / aula.capacidad) * 100)
+        }
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error asignando aula:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error asignando aula',
+      message: error.message
+    });
+  }
+});
+
+// GET /api/v1/examenes - Listar exámenes con filtros
+router.get('/', async (req, res) => {
+  try {
+    const { limit = 10, offset = 0, fecha, materiaId } = req.query;
+    
+    const where = {};
+    if (fecha) where.fecha = new Date(fecha);
+    if (materiaId) where.materia_codigo = materiaId;
+    
+    const examenes = await prisma.examen.findMany({
+      where,
+      include: {
+        carrera: true,
+        facultad: true,
+        aula: true,
+        examenTotem: true,
+        _count: {
+          select: { estudianteExamenes: true }
+        }
+      },
+      orderBy: { fecha: 'desc' },
+      take: parseInt(limit),
+      skip: parseInt(offset)
+    });
+    
+    return res.json({
+      success: true,
+      data: examenes,
+      total: examenes.length
+    });
+    
+  } catch (error) {
+    console.error('Error listando exámenes:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Error interno del servidor',
       message: error.message
     });
   }

@@ -12,14 +12,13 @@ model Facultad {
   id        Int              @id @default(autoincrement())
   nombre    String           @unique @db.VarChar(255)
   codigo    String?          @db.VarChar(50)
-  sector    Int?             
   sheetId   String?          @map("sheet_id") @db.VarChar(255)
   activa    Boolean          @default(true)
   createdAt DateTime         @default(now()) @map("created_at")
   updatedAt DateTime         @updatedAt @map("updated_at")
   carreras  Carrera[]
+  examenes  Examen[]
   sectores  SectorFacultad[]
-  syncLogs  SyncLog[]
 
   @@map("facultades")
 }
@@ -43,74 +42,105 @@ model Carrera {
 model Examen {
   id                 Int          @id @default(autoincrement())
   carreraId          Int          @map("carrera_id")
+  facultadId         Int          @map("facultad_id")
   aulaId             Int?         @map("aula_id")
+  
+  // Campos para match con sistemas externos (similares a innovalapi)
+  materia_codigo     String       @db.VarChar(20)
   nombreMateria      String       @map("nombre_materia") @db.VarChar(255)
+  areatema           String?      @db.VarChar(100)
+  
+  // Información básica del examen
   fecha              DateTime     @db.Date
   hora               DateTime?    @db.Time(0)
   tipoExamen         String?      @map("tipo_examen") @db.VarChar(100)
+  modalidadExamen    String?      @map("modalidad_examen") @db.VarChar(50)
+  
+  // Información de personal
+  catedra            String?      @db.VarChar(100)
+  docente            String?      @db.VarChar(255)
   monitoreo          String?      @db.VarChar(100)
+  control_cargo      String?      @map("control_cargo") @db.VarChar(50)
+  
+  // Información adicional
   materialPermitido  String?      @map("material_permitido") @db.Text
   observaciones      String?      @db.Text
-  activo             Boolean      @default(true)
-  createdAt          DateTime     @default(now()) @map("created_at")
-  updatedAt          DateTime     @updatedAt @map("updated_at")
-  asignacionAuto     Boolean      @default(true) @map("asignacion_auto")
-  criterioAsignacion String?      @map("criterio_asignacion") @db.VarChar(100)
-  modalidadExamen    String?      @map("modalidad_examen") @db.VarChar(50)
-  requierePc         Boolean      @default(false) @map("requiere_pc")
+  observaciones_adicionales String? @map("observaciones_adicionales") @db.Text
+  url                String?      @db.VarChar(255)
+  acta_numero        String?      @map("acta_numero") @db.VarChar(50)
+  
+  // Control de sistema
   cantidadInscriptos Int?         @default(0) @map("cantidad_inscriptos")
   fechaUltConsulta   DateTime?    @map("fecha_ult_consulta")
-  actasExamen        ActaExamen[]
-  aula               Aula?        @relation(fields: [aulaId], references: [id])
+  requierePc         Boolean      @default(false) @map("requiere_pc")
+  activo             Boolean      @default(true)
+  
+  // Timestamps
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+  
+  // Relaciones
   carrera            Carrera      @relation(fields: [carreraId], references: [id], onDelete: Cascade)
+  facultad           Facultad     @relation(fields: [facultadId], references: [id], onDelete: Cascade)
+  aula               Aula?        @relation(fields: [aulaId], references: [id])
   examenTotem        ExamenTotem?
+  estudianteExamenes EstudianteExamen[]
 
   @@index([aulaId], map: "examenes_aula_id_fkey")
   @@index([carreraId], map: "examenes_carrera_id_fkey")
+  @@index([facultadId], map: "examenes_facultad_id_fkey")
+  @@index([materia_codigo], map: "examenes_materia_codigo_fkey")
+  @@index([fecha], map: "examenes_fecha_fkey")
   @@map("examenes")
 }
 
-model SyncLog {
-  id                  Int      @id @default(autoincrement())
-  facultadId          Int      @map("facultad_id")
-  tipoOperacion       String   @map("tipo_operacion") @db.VarChar(50)
-  resultado           String   @db.VarChar(50)
-  mensaje             String?  @db.Text
-  registrosProcesados Int      @default(0) @map("registros_procesados")
-  createdAt           DateTime @default(now()) @map("created_at")
-  facultad            Facultad @relation(fields: [facultadId], references: [id], onDelete: Cascade)
-
-  @@index([facultadId], map: "sync_logs_facultad_id_fkey")
-  @@map("sync_logs")
-}
-
 model Estudiante {
-  id          Int          @id @default(autoincrement())
-  dni         String       @unique @db.VarChar(20)
-  nombre      String       @db.VarChar(100)
-  apellido    String       @db.VarChar(100)
-  email       String?      @db.VarChar(255)
-  telefono    String?      @db.VarChar(50)
-  activo      Boolean      @default(true)
-  createdAt   DateTime     @default(now()) @map("created_at")
-  updatedAt   DateTime     @updatedAt @map("updated_at")
-  actasExamen ActaExamen[]
+  dni       String       @id @db.VarChar(20)
+  nombre    String       @db.VarChar(100)
+  apellido  String       @db.VarChar(100)
+  email     String?      @db.VarChar(255)
+  telefono  String?      @db.VarChar(50)
+  activo    Boolean      @default(true)
+  createdAt DateTime     @default(now()) @map("created_at")
+  updatedAt DateTime     @updatedAt @map("updated_at")
+  examenes  EstudianteExamen[]
 
   @@map("estudiantes")
 }
 
+// Modelo de Aula simplificado (similar a innovalapi)
 model Aula {
-  id               Int      @id @default(autoincrement())
-  nombre           String   @unique @db.VarChar(100)
-  capacidad        Int?
-  ubicacion        String?  @db.VarChar(255)
-  disponible       Boolean  @default(true)
-  alumnosAsignados Int      @default(0) @map("alumnos_asignados")
-  createdAt        DateTime @default(now()) @map("created_at")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  examenes         Examen[]
+  id        Int      @id @default(autoincrement())
+  nombre    String   @unique @db.VarChar(100)
+  sede      String   @db.VarChar(100)
+  capacidad Int
+  activa    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  examenes  Examen[]
+  ocupaciones OcupacionAula[]
 
   @@map("aulas")
+}
+
+// Modelo de Ocupación de Aulas (control de capacidad por fecha/hora)
+model OcupacionAula {
+  id          Int      @id @default(autoincrement())
+  aula_id     Int
+  fecha       DateTime @db.Date
+  hora        String   @db.VarChar(10)
+  utilizados  Int      @default(0)
+  capacidad_teorica Int  @map("capacidad_teorica")
+  observaciones String? @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Relaciones
+  aula        Aula     @relation(fields: [aula_id], references: [id], onDelete: Cascade)
+  
+  @@unique([aula_id, fecha, hora])
+  @@index([fecha], map: "ocupacion_aula_fecha_fkey")
+  @@map("ocupacion_aula")
 }
 
 model TotemData {
@@ -123,21 +153,25 @@ model TotemData {
   @@map("totem_data")
 }
 
-model ActaExamen {
-  id            Int        @id @default(autoincrement())
-  examenId      Int        @map("examen_id")
-  estudianteId  Int        @map("estudiante_id")
-  presente      Boolean?
-  nota          Decimal?   @db.Decimal(4, 2)
-  observaciones String?    @db.Text
-  createdAt     DateTime   @default(now()) @map("created_at")
-  updatedAt     DateTime   @updatedAt @map("updated_at")
-  estudiante    Estudiante @relation(fields: [estudianteId], references: [id], onDelete: Cascade)
-  examen        Examen     @relation(fields: [examenId], references: [id], onDelete: Cascade)
-
-  @@unique([examenId, estudianteId])
-  @@index([estudianteId], map: "actas_examenes_estudiante_id_fkey")
-  @@map("actas_examenes")
+// Modelo de relación Estudiante-Examen (similar a innovalapi)
+model EstudianteExamen {
+  id         Int      @id @default(autoincrement())
+  examen_id  Int
+  dni        String   @db.VarChar(20)
+  asistencia Boolean  @default(false)
+  aprobado   Boolean  @default(false)
+  nota       Decimal? @db.Decimal(4, 2)
+  observaciones String? @db.Text
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  
+  // Relaciones
+  examen     Examen     @relation(fields: [examen_id], references: [id], onDelete: Cascade)
+  estudiante Estudiante @relation(fields: [dni], references: [dni], onDelete: Cascade)
+  
+  @@unique([examen_id, dni])
+  @@index([dni], map: "estudiante_examen_dni_fkey")
+  @@map("estudiante_examen")
 }
 
 model SectorFacultad {
@@ -189,35 +223,4 @@ model ExamenTotem {
   @@index([sectorTotem], map: "examen_totem_sector_fkey")
   @@index([carreraTotem], map: "examen_totem_carrera_fkey")
   @@map("examenes_totem")
-}
-
-model AulaConfiguracion {
-  id                  Int      @id @default(autoincrement())
-  nombre              String   @unique @db.VarChar(100)
-  tipo                String   @db.VarChar(50)
-  capacidadMaxima     Int
-  recursoEspecial     String?  @map("recurso_especial") @db.VarChar(100)
-  cantidadRecurso     Int?     @map("cantidad_recurso")
-  esParaInformatica   Boolean  @default(false) @map("es_para_informatica")
-  prioridadAsignacion Int      @default(0) @map("prioridad_asignacion")
-  disponible          Boolean  @default(true)
-  observaciones       String?  @db.Text
-  createdAt           DateTime @default(now()) @map("created_at")
-  updatedAt           DateTime @updatedAt @map("updated_at")
-
-  @@map("aulas_configuracion")
-}
-
-model ConfiguracionVisual {
-  id              Int      @id @default(autoincrement())
-  backgroundImage String?  @map("background_image") @db.VarChar(500)
-  titulo          String?  @db.VarChar(255)
-  subtitulo       String?  @db.VarChar(255)
-  colorPrimario   String?  @map("color_primario") @db.VarChar(7)
-  colorSecundario String?  @map("color_secundario") @db.VarChar(7)
-  activa          Boolean  @default(true)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @updatedAt @map("updated_at")
-
-  @@map("configuracion_visual")
 }

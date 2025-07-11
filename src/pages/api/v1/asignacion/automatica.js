@@ -36,9 +36,20 @@ export default async function handler(req, res) {
     const examenes = await prisma.examen.findMany({
       where,
       include: {
-        materia: true,
-        carrera: true,
-        facultad: true
+        carrera: {
+          select: {
+            id: true,
+            nombre: true,
+            codigo: true
+          }
+        },
+        facultad: {
+          select: {
+            id: true,
+            nombre: true,
+            codigo: true
+          }
+        }
       },
       orderBy: [
         { fecha: 'asc' },

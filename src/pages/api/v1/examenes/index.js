@@ -66,17 +66,11 @@ export default async function handler(req, res) {
       prisma.examen.findMany({
         where,
         include: {
-          materia: {
+          carrera: {
             select: {
               id: true,
               nombre: true,
               codigo: true
-            }
-          },
-          carrera: {
-            select: {
-              id: true,
-              nombre: true
             }
           },
           facultad: {
@@ -91,12 +85,12 @@ export default async function handler(req, res) {
               id: true,
               nombre: true,
               capacidad: true,
-              ubicacion: true
+              sede: true
             }
           },
-          totemData: {
+          examenTotem: {
             select: {
-              data: true
+              dataOriginal: true
             }
           }
         },

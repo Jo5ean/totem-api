@@ -81,11 +81,11 @@ export default async function handler(req, res) {
       facultad: {
         nombre: acta.examen.facultad.nombre
       },
-      aula: acta.examen.aula ? {
-        nombre: acta.examen.aula.nombre,
-        ubicacion: acta.examen.aula.ubicacion,
-        capacidad: acta.examen.aula.capacidad
-      } : null,
+                  aula: acta.examen.aula ? {
+              nombre: acta.examen.aula.nombre,
+              sede: acta.examen.aula.sede,
+              capacidad: acta.examen.aula.capacidad
+            } : null,
       estado: {
         tieneAula: !!acta.examen.aula,
         presente: acta.presente,

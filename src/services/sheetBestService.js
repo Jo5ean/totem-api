@@ -2,8 +2,9 @@ import axios from 'axios';
 
 class SheetBestService {
   constructor() {
-    // URL base de la API de Sheet.best para tu Google Sheet
-    this.apiUrl = 'https://api.sheetbest.com/sheets/16ccd035-8c9e-4218-b5f1-2da9939d7b3d';
+    // URL base de la API de Sheet.best desde variables de entorno
+    this.apiUrl = process.env.SHEETBEST_API_URL || 'https://api.sheetbest.com/sheets/16ccd035-8c9e-4218-b5f1-2da9939d7b3d';
+    this.timeout = parseInt(process.env.SHEETBEST_TIMEOUT) || 60000;
   }
 
   /**
@@ -12,9 +13,11 @@ class SheetBestService {
   async fetchSheetData() {
     try {
       console.log('📥 Obteniendo datos desde Sheet.best API...');
+      console.log(`🔗 URL: ${this.apiUrl}`);
+      console.log(`⏱️ Timeout: ${this.timeout}ms`);
       
       const response = await axios.get(this.apiUrl, {
-        timeout: 30000, // 30 segundos timeout
+        timeout: this.timeout,
         headers: {
           'Accept': 'application/json',
           'Content-Type': 'application/json'

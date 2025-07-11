@@ -57,15 +57,15 @@ async function handleGet(req, res) {
         estudiante: {
           OR: [
             { dni: { contains: search } },
-            { nombre: { contains: search, mode: 'insensitive' } },
-            { apellido: { contains: search, mode: 'insensitive' } }
+                    { nombre: { contains: search } },
+        { apellido: { contains: search } }
           ]
         }
       },
       {
         examen: {
           materia: {
-            nombre: { contains: search, mode: 'insensitive' }
+            nombre: { contains: search }
           }
         }
       }

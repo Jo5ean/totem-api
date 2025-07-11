@@ -126,7 +126,7 @@ export default async function handler(req, res) {
               id: examen.aula.id,
               nombre: examen.aula.nombre,
               capacidad: examen.aula.capacidad,
-              ubicacion: examen.aula.ubicacion
+              sede: examen.aula.sede
             } : null,
             tipoExamen: examen.tipoExamen || 'No especificado',
             modalidad: examen.modalidadExamen || 'presencial',
@@ -154,8 +154,7 @@ export default async function handler(req, res) {
         const matchPorNombre = await prisma.examen.findFirst({
           where: {
             nombreMateria: {
-              contains: examenExterno.nombreMateria,
-              mode: 'insensitive'
+              contains: examenExterno.nombreMateria
             },
             carrera: {
               codigo: examenExterno.carrera
@@ -196,12 +195,12 @@ export default async function handler(req, res) {
               fecha: matchPorNombre.fecha ? matchPorNombre.fecha.toISOString().split('T')[0] : null,
               hora: matchPorNombre.hora ? matchPorNombre.hora.toTimeString().split(' ')[0] : null,
               fechaExterna: examenExterno.fecActa,
-              aula: matchPorNombre.aula ? {
-                id: matchPorNombre.aula.id,
-                nombre: matchPorNombre.aula.nombre,
-                capacidad: matchPorNombre.aula.capacidad,
-                ubicacion: matchPorNombre.aula.ubicacion
-              } : null,
+                          aula: matchPorNombre.aula ? {
+              id: matchPorNombre.aula.id,
+              nombre: matchPorNombre.aula.nombre,
+              capacidad: matchPorNombre.aula.capacidad,
+              sede: matchPorNombre.aula.sede
+            } : null,
               tipoExamen: matchPorNombre.tipoExamen || 'No especificado',
               modalidad: matchPorNombre.modalidadExamen || 'presencial',
               observaciones: matchPorNombre.observaciones,
