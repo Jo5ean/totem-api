@@ -1,5 +1,6 @@
 import prisma from '../lib/db.js';
 import SheetBestService from './sheetBestService.js';
+import UcasalMappingService from './ucasalMappingService.js';
 import axios from 'axios';
 
 // ID del Google Sheet del TOTEM centralizado
@@ -8,6 +9,7 @@ const TOTEM_SHEET_ID = '12_tx2DXfebO-5SjRTiRTg3xebVR1x-5xJ_BFY7EPaS8';
 class TotemService {
   constructor() {
     this.sheetBestService = new SheetBestService();
+    this.ucasalMappingService = new UcasalMappingService();
   }
 
   async syncTotemData() {
@@ -94,8 +96,10 @@ class TotemService {
     
     console.log(`🔄 Procesando ${sheetData.length} filas para crear/actualizar exámenes...`);
     
-    // 🎯 PASO 1: MAPEO COMPLETO PREVIO
-    await this.ensureCompleteMapping(sheetData);
+    // 🎯 PASO 1: MAPEO COMPLETO PREVIO CON UCASAL
+    console.log('🗺️ Iniciando mapeo con datos reales de UCASAL...');
+    await this.ucasalMappingService.mapAllCarrerasFromSheetData(sheetData);
+    console.log('✅ Mapeo UCASAL completado, continuando con creación de exámenes...');
     
     for (const row of sheetData) {
       try {
