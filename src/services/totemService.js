@@ -93,26 +93,42 @@ class TotemService {
     const createdExams = [];
     const updatedExams = [];
     let duplicatesSkipped = 0;
+    const debugLogs = []; // Capturar logs para retornar
     
     console.log(`🔄 Procesando ${sheetData.length} filas para crear/actualizar exámenes...`);
     
     // 🎯 PASO 1: MAPEO COMPLETO PREVIO CON UCASAL
+    debugLogs.push('🗺️ DEBUG: ===== INICIANDO MAPEO UCASAL =====');
+    debugLogs.push(`🔍 DEBUG: Procesando ${sheetData.length} filas de sheet.best`);
+    debugLogs.push(`🔧 DEBUG: UcasalMappingService existe: ${!!this.ucasalMappingService}`);
+    
     console.log('🗺️ DEBUG: ===== INICIANDO MAPEO UCASAL =====');
     console.log(`🔍 DEBUG: Procesando ${sheetData.length} filas de sheet.best`);
     console.log('🔧 DEBUG: Verificando UcasalMappingService...', !!this.ucasalMappingService);
     
+    let ucasalMappingResult = 'NO_EJECUTADO';
     try {
+      debugLogs.push('🚀 DEBUG: Llamando a mapAllCarrerasFromSheetData...');
       console.log('🚀 DEBUG: Llamando a mapAllCarrerasFromSheetData...');
+      
       await this.ucasalMappingService.mapAllCarrerasFromSheetData(sheetData);
+      
+      ucasalMappingResult = 'EXITOSO';
+      debugLogs.push('✅ DEBUG: ===== MAPEO UCASAL COMPLETADO =====');
       console.log('✅ DEBUG: ===== MAPEO UCASAL COMPLETADO =====');
     } catch (error) {
+      ucasalMappingResult = `ERROR: ${error.message}`;
+      debugLogs.push('❌ DEBUG: ===== ERROR EN MAPEO UCASAL =====');
+      debugLogs.push(`❌ DEBUG: Error: ${error.message}`);
+      debugLogs.push(`❌ DEBUG: Stack: ${error.stack?.substring(0, 200)}...`);
+      
       console.error('❌ DEBUG: ===== ERROR EN MAPEO UCASAL =====');
       console.error('❌ DEBUG: Error:', error.message);
       console.error('❌ DEBUG: Stack trace:', error.stack);
       console.error('❌ DEBUG: ===== FIN ERROR =====');
-      // Continuar con el flujo aunque falle el mapeo UCASAL
     }
     
+    debugLogs.push('🔄 DEBUG: Continuando con creación de exámenes...');
     console.log('🔄 DEBUG: Continuando con creación de exámenes...');
     
     for (const row of sheetData) {
@@ -182,7 +198,13 @@ class TotemService {
     }
 
     console.log(`✅ Procesamiento completado: ${createdExams.length} exámenes creados, ${updatedExams.length} exámenes actualizados`);
-    return { created: createdExams, updated: updatedExams };
+    
+    return { 
+      created: createdExams, 
+      updated: updatedExams,
+      ucasalMappingResult,
+      debugLogs 
+    };
   }
 
   extractTotemRowData(row) {
