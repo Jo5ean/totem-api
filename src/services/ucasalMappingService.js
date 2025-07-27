@@ -330,47 +330,83 @@ class UcasalMappingService {
    * Proceso completo: mapear todas las carreras de los datos de sheet.best
    */
   async mapAllCarrerasFromSheetData(sheetData) {
-    console.log('🚀 DEBUG: Iniciando mapeo completo de carreras con API UCASAL...');
-    console.log(`🔍 DEBUG: Recibidos ${sheetData.length} registros de sheet.best`);
+    const logs = [];
+    
+    logs.push('🚀 DEBUG: Iniciando mapeo completo de carreras con API UCASAL...');
+    logs.push(`🔍 DEBUG: Recibidos ${sheetData.length} registros de sheet.best`);
     
     // Extraer códigos únicos de carreras del sheet.best
     const codigosCarreras = [...new Set(
       sheetData.map(row => row.CARRERA?.toString().trim()).filter(codigo => codigo)
     )];
     
-    console.log(`📊 DEBUG: Códigos de carreras únicos encontrados: ${codigosCarreras.length}`);
-    console.log(`🔍 DEBUG: Códigos: ${codigosCarreras.slice(0, 10).join(', ')}${codigosCarreras.length > 10 ? '...' : ''}`);
+    logs.push(`📊 DEBUG: Códigos de carreras únicos encontrados: ${codigosCarreras.length}`);
+    logs.push(`🔍 DEBUG: Códigos: ${codigosCarreras.slice(0, 10).join(', ')}${codigosCarreras.length > 10 ? '...' : ''}`);
     
     if (codigosCarreras.length === 0) {
-      console.warn('⚠️ DEBUG: No se encontraron códigos de carreras válidos');
-      return;
+      logs.push('⚠️ DEBUG: No se encontraron códigos de carreras válidos');
+      return { success: false, logs, error: 'No se encontraron códigos de carreras válidos' };
     }
     
     let procesadas = 0;
     let errores = 0;
-
+    
     try {
-      console.log('🗺️ INICIANDO MAPEO COMPLETO DE CARRERAS CON UCASAL...');
+      logs.push('🗺️ INICIANDO MAPEO COMPLETO DE CARRERAS CON UCASAL...');
       
-      // Extraer códigos únicos
-      const codigosCarrera = this.extractCodigosCarrera(sheetData);
-      
-      if (codigosCarrera.length === 0) {
-        console.log('⚠️ No se encontraron códigos de carrera válidos');
-        return new Map();
+      // Procesar cada código de carrera
+      for (const codigoCarrera of codigosCarreras) {
+        try {
+          logs.push(`🔍 Procesando carrera: ${codigoCarrera}`);
+          
+          // Obtener información de UCASAL
+          const infoCarrera = await this.fetchCarreraFromUcasal(codigoCarrera);
+          
+          if (infoCarrera) {
+            // Mapear sector a facultad
+            await this.mapSectorToFacultad(infoCarrera.codigoSector, infoCarrera.nombreSector);
+            
+            // Mapear carrera
+            await this.mapCarreraTotem(codigoCarrera, infoCarrera);
+            
+            procesadas++;
+            logs.push(`✅ Carrera ${codigoCarrera} mapeada exitosamente: ${infoCarrera.nombreCarrera}`);
+          } else {
+            errores++;
+            logs.push(`⚠️ Carrera ${codigoCarrera}: No se encontró información en UCASAL`);
+          }
+        } catch (error) {
+          errores++;
+          logs.push(`❌ Error procesando carrera ${codigoCarrera}: ${error.message}`);
+        }
       }
-
-      // Procesar en lotes
-      const resultados = await this.processCarrerasInBatches(codigosCarrera);
       
-      console.log('🎉 MAPEO COMPLETO FINALIZADO');
-      console.log(`📊 Resumen: ${resultados.size} carreras mapeadas correctamente`);
+      logs.push('🎉 MAPEO COMPLETO FINALIZADO');
+      logs.push(`📊 Resumen: ${procesadas} carreras mapeadas, ${errores} errores`);
       
-      return resultados;
+      // También hacer console.log para los logs de Railway
+      logs.forEach(log => console.log(log));
+      
+      return { 
+        success: true, 
+        logs, 
+        procesadas, 
+        errores,
+        total: codigosCarreras.length 
+      };
 
     } catch (error) {
-      console.error('❌ Error en mapeo completo:', error);
-      throw error;
+      const errorMsg = `❌ Error en mapeo completo: ${error.message}`;
+      logs.push(errorMsg);
+      console.error(errorMsg, error);
+      
+      return { 
+        success: false, 
+        logs, 
+        error: error.message,
+        procesadas, 
+        errores 
+      };
     }
   }
 }

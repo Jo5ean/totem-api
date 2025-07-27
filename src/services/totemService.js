@@ -110,25 +110,30 @@ class TotemService {
     console.log(`🔍 DEBUG: Procesando ${sheetData.length} filas de sheet.best`);
     console.log('🔧 DEBUG: Verificando UcasalMappingService...', !!this.ucasalMappingService);
     
-    let ucasalMappingResult = 'NO_EJECUTADO';
+    let ucasalMappingResult = 'NO_DISPONIBLE';
     try {
       debugLogs.push('🚀 DEBUG: Llamando a mapAllCarrerasFromSheetData...');
       console.log('🚀 DEBUG: Llamando a mapAllCarrerasFromSheetData...');
       
-      await this.ucasalMappingService.mapAllCarrerasFromSheetData(sheetData);
+      const ucasalService = new UcasalMappingService();
+      const mappingResult = await ucasalService.mapAllCarrerasFromSheetData(sheetData);
       
-      ucasalMappingResult = 'EXITOSO';
+      if (mappingResult && mappingResult.logs) {
+        // Agregar todos los logs detallados del UcasalMappingService
+        debugLogs.push(...mappingResult.logs);
+      }
+      
+      if (mappingResult && mappingResult.success) {
+        ucasalMappingResult = `EXITOSO: ${mappingResult.procesadas} carreras mapeadas, ${mappingResult.errores} errores`;
+      } else {
+        ucasalMappingResult = `ERROR: ${mappingResult?.error || 'Error desconocido'}`;
+      }
+      
       debugLogs.push('✅ DEBUG: ===== MAPEO UCASAL COMPLETADO =====');
-      console.log('✅ DEBUG: ===== MAPEO UCASAL COMPLETADO =====');
     } catch (error) {
       ucasalMappingResult = `ERROR: ${error.message}`;
-      debugLogs.push('❌ DEBUG: ===== ERROR EN MAPEO UCASAL =====');
-      debugLogs.push(`❌ DEBUG: Error: ${error.message}`);
-      debugLogs.push(`❌ DEBUG: Stack: ${error.stack?.substring(0, 200)}...`);
-      
-      console.error('❌ DEBUG: ===== ERROR EN MAPEO UCASAL =====');
-      console.error('❌ DEBUG: Error:', error.message);
-      console.error('❌ DEBUG: Stack trace:', error.stack);
+      debugLogs.push(`❌ DEBUG: Error en mapeo UCASAL: ${error.message}`);
+      console.error('Error en mapeo UCASAL:', error);
       console.error('❌ DEBUG: ===== FIN ERROR =====');
     }
     
