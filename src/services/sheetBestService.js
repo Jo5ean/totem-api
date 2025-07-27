@@ -3,7 +3,7 @@ import axios from 'axios';
 class SheetBestService {
   constructor() {
     // URL base de la API de Sheet.best desde variables de entorno
-    this.apiUrl = process.env.SHEETBEST_API_URL || 'https://api.sheetbest.com/sheets/16ccd035-8c9e-4218-b5f1-2da9939d7b3d';
+    this.apiUrl = process.env.SHEETBEST_API_URL || 'https://api.sheetbest.com/sheets/f5b078bb-768d-438c-94f3-5ddaf45ed46c';
     this.timeout = parseInt(process.env.SHEETBEST_TIMEOUT) || 60000;
   }
 
