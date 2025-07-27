@@ -97,15 +97,19 @@ class TotemService {
     console.log(`🔄 Procesando ${sheetData.length} filas para crear/actualizar exámenes...`);
     
     // 🎯 PASO 1: MAPEO COMPLETO PREVIO CON UCASAL
-    console.log('🗺️ DEBUG: Iniciando mapeo con datos reales de UCASAL...');
+    console.log('🗺️ DEBUG: ===== INICIANDO MAPEO UCASAL =====');
     console.log(`🔍 DEBUG: Procesando ${sheetData.length} filas de sheet.best`);
+    console.log('🔧 DEBUG: Verificando UcasalMappingService...', !!this.ucasalMappingService);
     
     try {
+      console.log('🚀 DEBUG: Llamando a mapAllCarrerasFromSheetData...');
       await this.ucasalMappingService.mapAllCarrerasFromSheetData(sheetData);
-      console.log('✅ DEBUG: Mapeo UCASAL completado exitosamente');
+      console.log('✅ DEBUG: ===== MAPEO UCASAL COMPLETADO =====');
     } catch (error) {
-      console.error('❌ DEBUG: Error en mapeo UCASAL:', error);
+      console.error('❌ DEBUG: ===== ERROR EN MAPEO UCASAL =====');
+      console.error('❌ DEBUG: Error:', error.message);
       console.error('❌ DEBUG: Stack trace:', error.stack);
+      console.error('❌ DEBUG: ===== FIN ERROR =====');
       // Continuar con el flujo aunque falle el mapeo UCASAL
     }
     
