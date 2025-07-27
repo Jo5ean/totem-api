@@ -330,6 +330,25 @@ class UcasalMappingService {
    * Proceso completo: mapear todas las carreras de los datos de sheet.best
    */
   async mapAllCarrerasFromSheetData(sheetData) {
+    console.log('🚀 DEBUG: Iniciando mapeo completo de carreras con API UCASAL...');
+    console.log(`🔍 DEBUG: Recibidos ${sheetData.length} registros de sheet.best`);
+    
+    // Extraer códigos únicos de carreras del sheet.best
+    const codigosCarreras = [...new Set(
+      sheetData.map(row => row.CARRERA?.toString().trim()).filter(codigo => codigo)
+    )];
+    
+    console.log(`📊 DEBUG: Códigos de carreras únicos encontrados: ${codigosCarreras.length}`);
+    console.log(`🔍 DEBUG: Códigos: ${codigosCarreras.slice(0, 10).join(', ')}${codigosCarreras.length > 10 ? '...' : ''}`);
+    
+    if (codigosCarreras.length === 0) {
+      console.warn('⚠️ DEBUG: No se encontraron códigos de carreras válidos');
+      return;
+    }
+    
+    let procesadas = 0;
+    let errores = 0;
+
     try {
       console.log('🗺️ INICIANDO MAPEO COMPLETO DE CARRERAS CON UCASAL...');
       
