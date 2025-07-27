@@ -63,7 +63,11 @@ class TotemService {
           rowsProcessed: sheetResult.data.length,
           validation: validation,
           detection: detection,
-          metadata: sheetResult.metadata
+          metadata: sheetResult.metadata,
+          // DEBUG: Verificar que los cambios se desplegaron
+          ucasalMappingResult: processedExams.ucasalMappingResult || 'NO_DISPONIBLE',
+          debugLogs: processedExams.debugLogs || ['DEBUG: Logs no disponibles'],
+          deployVersion: 'v2025-01-27-debug'
         },
         duration,
         timestamp: new Date().toISOString()
