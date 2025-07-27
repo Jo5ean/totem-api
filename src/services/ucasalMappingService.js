@@ -364,10 +364,16 @@ class UcasalMappingService {
           
           if (infoCarrera) {
             // Mapear sector a facultad
-            await this.mapSectorToFacultad(infoCarrera.codigoSector, infoCarrera.nombreSector);
+            const facultad = await this.getOrCreateFacultad(infoCarrera.codigoSector, infoCarrera.nombreSector);
+            
+            // Crear o actualizar mapeo de sector
+            await this.createOrUpdateSectorMapping(infoCarrera.codigoSector, facultad.id);
             
             // Mapear carrera
-            await this.mapCarreraTotem(codigoCarrera, infoCarrera);
+            const carrera = await this.getOrCreateCarrera(infoCarrera, facultad.id);
+            
+            // Crear o actualizar mapeo de carrera TOTEM
+            await this.createOrUpdateCarreraTotemMapping(codigoCarrera, carrera.id, infoCarrera.nombreCarrera);
             
             procesadas++;
             logs.push(`✅ Carrera ${codigoCarrera} mapeada exitosamente: ${infoCarrera.nombreCarrera}`);
