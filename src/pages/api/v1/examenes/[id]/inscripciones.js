@@ -181,7 +181,7 @@ async function handler(req, res) {
     console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
 
     // 6. FILTRAR ÚNICAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
-    // Solo inscriptos con lugar "3" (Salta - Distancia) como requiere el usuario
+    // Solo inscriptos con lugar "3" (Salta - Distancia)
     const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
       const esLugarTres = inscripto.lugar === "3";
       
