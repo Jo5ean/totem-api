@@ -1,6 +1,7 @@
 import prisma from '../../../../../lib/db.js';
+import { withCors } from '../../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({
       success: false,
@@ -341,4 +342,6 @@ async function sugerirAula(cantidadInscriptos) {
     console.error('Error sugiriendo aula:', error);
     return null;
   }
-} 
+}
+
+export default withCors(handler);

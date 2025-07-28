@@ -1,6 +1,7 @@
 import AsignacionAulaService from '../../../../../services/AsignacionAulaService.js';
+import { withCors } from '../../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({
       success: false,
@@ -47,4 +48,6 @@ export default async function handler(req, res) {
       message: error.message
     });
   }
-} 
+}
+
+export default withCors(handler); 
