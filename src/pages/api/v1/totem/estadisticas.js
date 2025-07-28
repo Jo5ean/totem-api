@@ -1,8 +1,9 @@
 import TotemService from '../../../../services/totemService.js';
+import { withCors } from '../../../../lib/cors.js';
 
 const totemService = new TotemService();
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({
       success: false,
@@ -28,4 +29,7 @@ export default async function handler(req, res) {
       message: error.message
     });
   }
-} 
+}
+
+// Exportar con middleware CORS
+export default withCors(handler);
