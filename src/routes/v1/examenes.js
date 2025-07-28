@@ -176,12 +176,16 @@ router.get('/por-fecha', async (req, res) => {
       orderBy: { nombre: 'asc' }
     });
     
+    // NUEVA FUNCIONALIDAD: Agrupar carreras por estado de inscriptos
+    const carrerasPorEstado = await agruparCarrerasPorInscriptos(examenes);
+    
     return res.status(200).json({
       success: true,
       message: 'Exámenes por fecha obtenidos exitosamente',
       data: {
         examenesPorFecha,
         aulasDisponibles,
+        carrerasPorEstado, // Nueva agrupación de carreras
         totalExamenes: examenes.length,
         fechas: Object.keys(examenesPorFecha).sort()
       }
@@ -1081,4 +1085,94 @@ router.get('/', async (req, res) => {
   }
 });
 
-export default router; 
+/**
+ * 🎯 FUNCIÓN HELPER: Agrupar carreras por estado de inscriptos
+ * Organiza las carreras en dos grupos: con inscriptos y sin inscriptos
+ */
+async function agruparCarrerasPorInscriptos(examenes) {
+  console.log(`📊 Agrupando ${examenes.length} exámenes por estado de inscriptos...`);
+  
+  const carrerasConInscriptos = new Map();
+  const carrerasSinInscriptos = new Map();
+  
+  // Procesar cada examen
+  for (const examen of examenes) {
+    const carreraKey = `${examen.carrera.codigo}-${examen.carrera.nombre}`;
+    const tieneInscriptos = examen.cantidadInscriptos > 0;
+    
+    const carreraData = {
+      codigo: examen.carrera.codigo,
+      nombre: examen.carrera.nombre,
+      facultad: examen.carrera.facultad.nombre,
+      examenes: []
+    };
+    
+    const examenData = {
+      id: examen.id,
+      nombre: examen.nombreMateria || `Materia ${examen.examenTotem?.materiaTotem}` || 'Sin nombre',
+      fecha: examen.fecha.toISOString().split('T')[0],
+      hora: examen.hora ? examen.hora.toTimeString().split(' ')[0] : null,
+      cantidadInscriptos: examen.cantidadInscriptos || 0,
+      aula: examen.aula ? {
+        id: examen.aula.id,
+        nombre: examen.aula.nombre,
+        capacidad: examen.aula.capacidad
+      } : null
+    };
+    
+    if (tieneInscriptos) {
+      // Carrera CON inscriptos
+      if (carrerasConInscriptos.has(carreraKey)) {
+        carrerasConInscriptos.get(carreraKey).examenes.push(examenData);
+      } else {
+        carrerasConInscriptos.set(carreraKey, {
+          ...carreraData,
+          examenes: [examenData]
+        });
+      }
+    } else {
+      // Carrera SIN inscriptos
+      if (carrerasSinInscriptos.has(carreraKey)) {
+        carrerasSinInscriptos.get(carreraKey).examenes.push(examenData);
+      } else {
+        carrerasSinInscriptos.set(carreraKey, {
+          ...carreraData,
+          examenes: [examenData]
+        });
+      }
+    }
+  }
+  
+  // Convertir Maps a arrays y ordenar
+  const conInscriptos = Array.from(carrerasConInscriptos.values())
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  
+  const sinInscriptos = Array.from(carrerasSinInscriptos.values())
+    .sort((a, b) => a.nombre.localeCompare(b.nombre));
+  
+  // Calcular estadísticas
+  const totalCarreras = conInscriptos.length + sinInscriptos.length;
+  const porcentajeConInscriptos = totalCarreras > 0 ? 
+    Math.round((conInscriptos.length / totalCarreras) * 100) : 0;
+  
+  console.log(`✅ Agrupación completada: ${conInscriptos.length} con inscriptos, ${sinInscriptos.length} sin inscriptos`);
+  
+  return {
+    conInscriptos: {
+      total: conInscriptos.length,
+      carreras: conInscriptos
+    },
+    sinInscriptos: {
+      total: sinInscriptos.length,
+      carreras: sinInscriptos
+    },
+    resumen: {
+      totalCarreras,
+      carrerasConInscriptos: conInscriptos.length,
+      carrerasSinInscriptos: sinInscriptos.length,
+      porcentajeConInscriptos
+    }
+  };
+}
+
+export default router;

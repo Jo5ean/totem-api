@@ -46,6 +46,10 @@ class TotemService {
       // Procesar los datos y crear exámenes
       const processedExams = await this.processTotemDataToExams(sheetResult.data);
       
+      // 🚀 NUEVA FUNCIONALIDAD: Sincronización automática de inscriptos
+      console.log('🔄 Iniciando sincronización automática de inscriptos...');
+      const inscriptosResult = await this.syncInscriptosAutomatico(processedExams.created.concat(processedExams.updated));
+      
       const duration = Date.now() - startTime;
       
       console.log(`🎉 Sincronización TOTEM completada en ${duration}ms`);
@@ -836,10 +840,12 @@ class TotemService {
       console.log(`✅ Match UCASAL completado: ${estudiantesCreados} estudiantes procesados`);
       
       return {
+        success: true,
         examenId,
         actasEncontradas: actasFiltradas.length,
         estudiantesTotal: estudiantesTotal.length,
         estudiantesCreados,
+        cantidadInscriptos: estudiantesCreados,
         fechaConsulta: new Date()
       };
       
@@ -847,6 +853,77 @@ class TotemService {
       console.error('❌ Error obteniendo inscriptos UCASAL:', error);
       throw error;
     }
+  }
+
+  /**
+   * 🚀 SINCRONIZACIÓN AUTOMÁTICA DE INSCRIPTOS
+   * Consulta inscriptos automáticamente para una lista de exámenes
+   */
+  async syncInscriptosAutomatico(examenes) {
+    console.log(`🔄 Iniciando sincronización automática de inscriptos para ${examenes.length} exámenes...`);
+    
+    let exitosos = 0;
+    let fallidos = 0;
+    let sinCodigoMateria = 0;
+    const resultados = [];
+    
+    for (const examen of examenes) {
+      try {
+        // Verificar que el examen tenga código de materia
+        const examenCompleto = await prisma.examen.findUnique({
+          where: { id: examen.id },
+          include: { examenTotem: true }
+        });
+        
+        if (!examenCompleto?.examenTotem?.materiaTotem) {
+          console.log(`⚠️ Examen ${examen.id} sin código de materia, omitiendo...`);
+          sinCodigoMateria++;
+          continue;
+        }
+        
+        console.log(`📡 Consultando inscriptos para examen ${examen.id} (${examenCompleto.examenTotem.materiaTotem})...`);
+        
+        // Consultar inscriptos usando el método existente
+        const inscriptosResult = await this.obtenerInscriptosUcasal(examen.id);
+        
+        if (inscriptosResult && inscriptosResult.success) {
+          exitosos++;
+          console.log(`✅ Inscriptos consultados exitosamente para examen ${examen.id}: ${inscriptosResult.cantidadInscriptos} inscriptos`);
+        } else {
+          fallidos++;
+          console.log(`❌ Error consultando inscriptos para examen ${examen.id}`);
+        }
+        
+        resultados.push({
+          examenId: examen.id,
+          success: inscriptosResult?.success || false,
+          cantidadInscriptos: inscriptosResult?.cantidadInscriptos || 0
+        });
+        
+      } catch (error) {
+        fallidos++;
+        console.error(`❌ Error procesando examen ${examen.id}:`, error.message);
+        resultados.push({
+          examenId: examen.id,
+          success: false,
+          error: error.message
+        });
+      }
+    }
+    
+    console.log(`🎉 Sincronización automática completada:`);
+    console.log(`   ✅ Exitosos: ${exitosos}`);
+    console.log(`   ❌ Fallidos: ${fallidos}`);
+    console.log(`   ⚠️ Sin código de materia: ${sinCodigoMateria}`);
+    
+    return {
+      success: true,
+      procesados: examenes.length,
+      exitosos,
+      fallidos,
+      sinCodigoMateria,
+      resultados
+    };
   }
 }
 
