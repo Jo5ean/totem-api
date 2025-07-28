@@ -46,6 +46,10 @@ class TotemService {
       // Procesar los datos y crear exámenes
       const processedExams = await this.processTotemDataToExams(sheetResult.data);
       
+      // 🚀 NUEVA FUNCIONALIDAD: Sincronización automática de inscriptos
+      console.log('🎓 Iniciando sincronización automática de inscriptos...');
+      const inscriptosResult = await this.syncInscriptosAutomatico(processedExams.created.concat(processedExams.updated));
+      
       const duration = Date.now() - startTime;
       
       console.log(`🎉 Sincronización TOTEM completada en ${duration}ms`);
@@ -67,7 +71,9 @@ class TotemService {
           // DEBUG: Verificar que los cambios se desplegaron
           ucasalMappingResult: processedExams.ucasalMappingResult || 'NO_DISPONIBLE',
           debugLogs: processedExams.debugLogs || ['DEBUG: Logs no disponibles'],
-          deployVersion: 'v2025-01-27-debug'
+          deployVersion: 'v2025-01-27-debug',
+          // 🎓 NUEVA INFO: Resultados de sincronización automática de inscriptos
+          inscriptosSync: inscriptosResult
         },
         duration,
         timestamp: new Date().toISOString()
@@ -712,6 +718,77 @@ class TotemService {
     }
     
     console.log(`✅ MAPEO COMPLETADO: ${sectoresMapeados} sectores, ${carrerasMapeadas} carreras, ${aulasCreadas} aulas`);
+  }
+
+  /**
+   * 🚀 SINCRONIZACIÓN AUTOMÁTICA DE INSCRIPTOS
+   * Consulta inscriptos para todos los exámenes procesados durante la sincronización
+   */
+  async syncInscriptosAutomatico(examenes) {
+    const resultados = {
+      total: examenes.length,
+      exitosos: 0,
+      fallidos: 0,
+      sinCodigoMateria: 0,
+      detalles: []
+    };
+    
+    console.log(`🎯 Consultando inscriptos para ${examenes.length} exámenes...`);
+    
+    for (const examen of examenes) {
+      try {
+        // Obtener datos completos del examen
+        const examenCompleto = await prisma.examen.findUnique({
+          where: { id: examen.id },
+          include: {
+            examenTotem: {
+              select: {
+                materiaTotem: true,
+                areaTemaTotem: true
+              }
+            }
+          }
+        });
+        
+        if (!examenCompleto?.examenTotem?.materiaTotem) {
+          console.log(`⚠️ Examen ${examen.id}: Sin código de materia, saltando...`);
+          resultados.sinCodigoMateria++;
+          resultados.detalles.push({
+            examenId: examen.id,
+            status: 'sin_codigo_materia',
+            inscriptos: 0
+          });
+          continue;
+        }
+        
+        // Consultar inscriptos usando el método existente
+        const inscriptosResult = await this.obtenerInscriptosUcasal(examen.id);
+        
+        resultados.exitosos++;
+        resultados.detalles.push({
+          examenId: examen.id,
+          status: 'exitoso',
+          inscriptos: inscriptosResult.estudiantesCreados || 0,
+          codigoMateria: examenCompleto.examenTotem.materiaTotem
+        });
+        
+        console.log(`✅ Examen ${examen.id}: ${inscriptosResult.estudiantesCreados || 0} inscriptos sincronizados`);
+        
+      } catch (error) {
+        console.error(`❌ Error sincronizando inscriptos para examen ${examen.id}:`, error.message);
+        resultados.fallidos++;
+        resultados.detalles.push({
+          examenId: examen.id,
+          status: 'error',
+          inscriptos: 0,
+          error: error.message
+        });
+      }
+    }
+    
+    console.log(`🎓 Sincronización de inscriptos completada: ${resultados.exitosos} exitosos, ${resultados.fallidos} fallidos, ${resultados.sinCodigoMateria} sin código`);
+    
+    return resultados;
   }
 
   /**
