@@ -1,6 +1,7 @@
 import prisma from '../../../../lib/db.js';
+import { withCors } from '../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+export default withCors(async function handler(req, res) {
   if (req.method !== 'GET') {
     return res.status(405).json({
       success: false,
@@ -198,4 +199,4 @@ export default async function handler(req, res) {
       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
-} 
+});

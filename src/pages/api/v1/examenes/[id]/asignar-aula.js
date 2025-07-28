@@ -1,6 +1,7 @@
 import { prisma } from '../../../../../lib/db.js';
+import { withCors } from '../../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+export default withCors(async function handler(req, res) {
   const { method, query: { id } } = req;
 
   // Validar que el ID sea un número
@@ -28,7 +29,7 @@ export default async function handler(req, res) {
   } finally {
     await prisma.$disconnect();
   }
-}
+})
 
 // POST /api/v1/examenes/[id]/asignar-aula - Asignar aula a examen
 async function asignarAula(req, res, examenId) {

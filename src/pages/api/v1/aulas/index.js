@@ -1,6 +1,7 @@
 import { prisma } from '../../../../lib/db.js';
+import { withCors } from '../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   const { method } = req;
 
   try {
@@ -23,6 +24,8 @@ export default async function handler(req, res) {
     await prisma.$disconnect();
   }
 }
+
+export default withCors(handler);
 
 // GET /api/v1/aulas - Obtener todas las aulas
 async function getAulas(req, res) {
