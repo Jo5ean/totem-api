@@ -164,17 +164,19 @@ router.get('/por-fecha', async (req, res) => {
       return grupos;
     }, {});
     
-    // Obtener aulas disponibles
+    // Obtener todas las aulas (no filtrar por disponible)
     const aulasDisponibles = await prisma.aula.findMany({
-      where: { disponible: true },
       select: {
         id: true,
         nombre: true,
         capacidad: true,
-        ubicacion: true
+        ubicacion: true,
+        disponible: true // Incluir el campo disponible para referencia
       },
       orderBy: { nombre: 'asc' }
     });
+    
+    console.log(` Aulas encontradas: ${aulasDisponibles.length} (disponibles: ${aulasDisponibles.filter(a => a.disponible).length})`);
     
     // NUEVA FUNCIONALIDAD: Agrupar carreras por estado de inscriptos
     const carrerasPorEstado = await agruparCarrerasPorInscriptos(examenes);

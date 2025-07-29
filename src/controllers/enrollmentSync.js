@@ -245,9 +245,24 @@ export const getEnrollmentStatistics = async (req, res) => {
  */
 async function fetchEnrollmentFromExternalAPI(exam) {
   try {
-    // Mock implementation - replace with actual external API call
-    // In production, this would call the real enrollment system
-    
+    console.log(`📡 Fetching enrollment for exam ${exam.id}:`, {
+      materia_codigo: exam.materia_codigo,
+      areatema: exam.areatema,
+      fecha: exam.fecha?.toISOString(),
+      hora: exam.hora?.toTimeString()
+    });
+
+    // Verificar variables de entorno
+    if (!EXTERNAL_API_URL) {
+      console.warn('⚠️ EXTERNAL_ENROLLMENT_API_URL no configurada, usando mock data');
+      return Math.floor(Math.random() * 150) + 10;
+    }
+
+    if (!API_KEY) {
+      console.warn('⚠️ EXTERNAL_API_KEY no configurada, usando mock data');
+      return Math.floor(Math.random() * 150) + 10;
+    }
+
     const params = {
       subjectId: exam.materia_codigo,
       areaTema: exam.areatema || '',
@@ -255,23 +270,31 @@ async function fetchEnrollmentFromExternalAPI(exam) {
       timeSlot: exam.hora ? exam.hora.toTimeString().slice(0, 5) : ''
     };
 
-    console.log(`📡 Fetching enrollment for:`, params);
+    console.log(`🔗 Calling external API: ${EXTERNAL_API_URL}/enrollments`);
+    console.log(`📋 Parameters:`, params);
 
-    // Simulate API call delay
-    await new Promise(resolve => setTimeout(resolve, 100));
+    // Realizar llamada a API externa con timeout
+    const response = await axios.get(`${EXTERNAL_API_URL}/enrollments`, {
+      params,
+      headers: { 
+        'Authorization': `Bearer ${API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000 // 10 segundos timeout
+    });
 
-    // Mock response - in production, replace with:
-    // const response = await axios.get(`${EXTERNAL_API_URL}/enrollments`, {
-    //   params,
-    //   headers: { 'Authorization': `Bearer ${API_KEY}` }
-    // });
-    // return response.data.count;
-
-    // Return mock data for testing
-    return Math.floor(Math.random() * 150) + 10;
+    console.log(`✅ External API response:`, response.status, response.data);
+    return response.data.count || 0;
 
   } catch (error) {
-    console.error('Error fetching enrollment from external API:', error);
+    console.error('❌ Error fetching enrollment from external API:', {
+      message: error.message,
+      code: error.code,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+
+    // Retornar null para indicar error, pero no fallar completamente
     return null;
   }
 }
