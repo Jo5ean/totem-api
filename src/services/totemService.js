@@ -1,6 +1,7 @@
 import prisma from '../lib/db.js';
 import SheetBestService from './sheetBestService.js';
 import UcasalMappingService from './ucasalMappingService.js';
+import { formatDateDDMMYYYY, getNextYearJanuaryFirst } from '../lib/helpers.js';
 import axios from 'axios';
 
 // ID del Google Sheet del TOTEM centralizado
@@ -740,14 +741,17 @@ class TotemService {
       
       console.log(`📋 Datos del examen: materia=${materia_codigo}, areaTema=${areatema}, fecha=${fecha.toDateString()}`);
       
-      // 2. Construir rango de fechas (desde primer examen hasta hoy)
+      // 2. Construir rango de fechas (desde primer examen hasta el 1 de enero del año siguiente)
       const fechaExamen = new Date(fecha);
       const fechaDesde = new Date(fechaExamen);
       fechaDesde.setMonth(fechaDesde.getMonth() - 2); // 2 meses antes
-      const fechaHasta = new Date(); // Hasta hoy
       
-      const fechaDesdeStr = fechaDesde.toLocaleDateString('es-AR');
-      const fechaHastaStr = fechaHasta.toLocaleDateString('es-AR');
+      // Extender hasta el 1 de enero del año siguiente
+      const fechaHasta = getNextYearJanuaryFirst();
+      
+      // Formatear fechas con DD/MM/YYYY (con ceros a la izquierda)
+      const fechaDesdeStr = formatDateDDMMYYYY(fechaDesde);
+      const fechaHastaStr = formatDateDDMMYYYY(fechaHasta);
       
       // 3. Construir URL de UCASAL
       const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=true&fechaDesde=${fechaDesdeStr}&fechaHasta=${fechaHastaStr}`;

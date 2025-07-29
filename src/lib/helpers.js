@@ -63,3 +63,33 @@ export function obtenerCarrerasSeguras(facultad) {
   
   return Array.isArray(facultad.carreras) ? facultad.carreras : [];
 } 
+
+/**
+ * Formatea una fecha en formato DD/MM/YYYY con ceros a la izquierda
+ * @param {Date} date - Fecha a formatear
+ * @returns {string} Fecha formateada como DD/MM/YYYY
+ */
+export function formatDateDDMMYYYY(date) {
+  if (!date || !(date instanceof Date)) {
+    throw new Error('Se requiere una fecha válida');
+  }
+  
+  const day = date.getDate().toString().padStart(2, '0');
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const year = date.getFullYear();
+  
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Obtiene la fecha del 1 de enero del año siguiente
+ * @param {Date} baseDate - Fecha base (opcional, usa la fecha actual si no se proporciona)
+ * @returns {Date} Fecha del 1 de enero del año siguiente
+ */
+export function getNextYearJanuaryFirst(baseDate = new Date()) {
+  const nextYear = new Date(baseDate);
+  nextYear.setFullYear(nextYear.getFullYear() + 1);
+  nextYear.setMonth(0); // Enero
+  nextYear.setDate(1); // Día 1
+  return nextYear;
+} 
