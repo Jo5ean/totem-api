@@ -1,10 +1,13 @@
 import { getEnrollmentStatistics } from '../../../../controllers/enrollmentSync.js';
+import { withCors } from '../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   if (req.method === 'GET') {
     return await getEnrollmentStatistics(req, res);
   } else {
-    res.setHeader('Allow', ['GET']);
+    res.setHeader('Allow', ['GET', 'OPTIONS']);
     res.status(405).json({ success: false, error: 'Method not allowed' });
   }
 }
+
+export default withCors(handler);
