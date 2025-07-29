@@ -384,13 +384,19 @@ class TotemService {
   }
 
   async updateExamenFromTotem(examenId, totemData, carreraId, facultadId, aulaId = null) {
-    return await prisma.examen.update({
+    // 🔒 PRESERVAR ASIGNACIONES DE AULAS EXISTENTES
+    // Solo actualizar aulaId si viene específicamente desde TOTEM, sino mantener el actual
+    const examenActual = await prisma.examen.findUnique({
       where: { id: examenId },
-      data: {
-        // IDs de relación
-        carreraId,
-        facultadId,    // ✅ NUEVO: requerido
-        aulaId,
+      select: { aulaId: true }
+    });
+    
+    const updateData = {
+      // IDs de relación
+      carreraId,
+      facultadId,    // ✅ NUEVO: requerido
+      // 🔒 CRÍTICO: Solo actualizar aulaId si no hay asignación manual previa
+      ...(examenActual.aulaId === null && aulaId !== null && { aulaId }),
         
         // Campos para match con sistemas externos  
         materia_codigo: totemData.materia?.toString() || 'SIN_CODIGO',     // ✅ NUEVO: requerido
@@ -416,7 +422,11 @@ class TotemService {
         
         // Control de sistema
         fechaUltConsulta: new Date()
-      }
+      };
+    
+    return await prisma.examen.update({
+      where: { id: examenId },
+      data: updateData
     });
   }
 
@@ -746,8 +756,9 @@ class TotemService {
       fechaDesde.setMonth(fechaDesde.getMonth() - 2); // 2 meses antes
       const fechaHasta = new Date(); // Hasta hoy
       
-      const fechaDesdeStr = fechaDesde.toLocaleDateString('es-AR');
-      const fechaHastaStr = fechaHasta.toLocaleDateString('es-AR');
+      // ✅ FORMATO CORRECTO: dd/mm/yyyy con CEROS OBLIGATORIOS como espera la API de UCASAL
+      const fechaDesdeStr = `${fechaDesde.getDate().toString().padStart(2, '0')}/${(fechaDesde.getMonth() + 1).toString().padStart(2, '0')}/${fechaDesde.getFullYear()}`;
+      const fechaHastaStr = `${fechaHasta.getDate().toString().padStart(2, '0')}/${(fechaHasta.getMonth() + 1).toString().padStart(2, '0')}/${fechaHasta.getFullYear()}`;
       
       // 3. Construir URL de UCASAL
       const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=true&fechaDesde=${fechaDesdeStr}&fechaHasta=${fechaHastaStr}`;
