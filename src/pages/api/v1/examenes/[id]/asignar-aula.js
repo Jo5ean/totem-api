@@ -1,4 +1,4 @@
-import { prisma } from '../../../../../lib/db.js';
+import prisma from '../../../../../lib/db.js';
 import { withCors } from '../../../../../lib/cors.js';
 
 export default withCors(async function handler(req, res) {

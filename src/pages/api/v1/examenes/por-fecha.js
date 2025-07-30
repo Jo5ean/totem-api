@@ -103,10 +103,11 @@ export default withCors(async function handler(req, res) {
         console.log(`   Todas las propiedades:`, Object.keys(examen));
       }
 
-      examenesPorFecha[fechaStr].push({
+      // Formatear según lo que espera el backoffice
+      const examenFormateado = {
         id: examen.id,
         nombre: examen.nombreMateria,
-        hora: examen.hora ? examen.hora.toTimeString().split(' ')[0].substring(0, 5) : null,
+        hora: examen.hora ? examen.hora.toTimeString().split(' ')[0].substring(0, 5) : '', // HH:MM
         carrera: {
           codigo: examen.carrera.codigo,
           nombre: examen.carrera.nombre,
@@ -116,27 +117,14 @@ export default withCors(async function handler(req, res) {
           id: examen.aula.id,
           nombre: examen.aula.nombre,
           capacidad: examen.aula.capacidad,
-          sede: examen.aula.sede
+          ubicacion: examen.aula.sede || ''
         } : null,
-        tipoExamen: examen.tipoExamen,
-        modalidad: examen.modalidadExamen || 'presencial',
-        observaciones: examen.observaciones,
-        requierePc: examen.requierePc || false,
-        // Datos del TOTEM (corregido: examenTotem es objeto, no array)
         codigoMateria: codigoMateria,
-        areaTema: examen.examenTotem?.areaTemaTotem || null,
-        carreraTotem: examen.examenTotem?.carreraTotem || null,
-        docente: examen.examenTotem?.docenteTotem || null,
-        monitoreo: examen.examenTotem?.monitoreoTotem || null,
-        control: examen.examenTotem?.controlTotem || null,
-        // Datos de inscriptos (ahora desde BD local)
-        inscriptos: examen.cantidadInscriptos || 0,
-        estadoInscriptos: examen.cantidadInscriptos !== null ? 'success' : 'sin-consultar',
-        ultimaActualizacion: examen.fechaUltConsulta,
-        // Estado de asignación
-        necesitaAsignacion: !examen.aula,
-        createdAt: examen.createdAt
-      });
+        inscriptos: examen.cantidadInscriptos || undefined,
+        necesitaAsignacion: !examen.aula && (examen.cantidadInscriptos > 0)
+      };
+
+      examenesPorFecha[fechaStr].push(examenFormateado);
     }
 
     // Obtener estadísticas de aulas disponibles
