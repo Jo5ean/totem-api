@@ -841,13 +841,20 @@ class TotemService {
       for (const acta of actasFiltradas) {
         if (acta.alumnos && Array.isArray(acta.alumnos)) {
           for (const alumno of acta.alumnos) {
-            estudiantesTotal.push(alumno);
-            estudiantesUnicos.add(alumno.ndocu);
+            // 🎯 FILTRO OBLIGATORIO: Solo inscriptos con lugar === "3" (SALTA - DISTANCIA)
+            // Este filtro es EXCLUYENTE y OBLIGATORIO según las especificaciones
+            if (alumno.lugar === "3") {
+              estudiantesTotal.push(alumno);
+              estudiantesUnicos.add(alumno.ndocu);
+              console.log(`✅ Inscripto válido: ${alumno.apen}, lugar="${alumno.lugar}", nombreLugar="${alumno.nombreLugar}"`);
+            } else {
+              console.log(`❌ Inscripto filtrado: ${alumno.apen}, lugar="${alumno.lugar}", nombreLugar="${alumno.nombreLugar}" - NO es lugar "3"`);
+            }
           }
         }
       }
       
-      console.log(`👥 ${estudiantesTotal.length} estudiantes procesados`);
+      console.log(`👥 ${estudiantesTotal.length} estudiantes VÁLIDOS procesados (con lugar="3")`);
       
       // 7. Crear registros EstudianteExamen
       let estudiantesCreados = 0;
