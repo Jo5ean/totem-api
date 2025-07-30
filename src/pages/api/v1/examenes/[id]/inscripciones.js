@@ -175,12 +175,13 @@ async function handler(req, res) {
 
     console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
 
-    // 6. FILTRAR ÚNICAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
-    // Solo inscriptos con lugar "3" (Salta - Distancia)
+    // 6. FILTRAR OBLIGATORIAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
+    // ⚠️ CRITERIO OBLIGATORIO Y EXCLUYENTE: Solo inscriptos con lugar === "3"
+    // NO importa el sector, modo, etc. - SOLO lugar "3" es válido
     const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
       const esLugarTres = inscripto.lugar === "3";
       
-      console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", nombreLugar="${inscripto.nombreLugar}", modo="${inscripto.nombreModo}", cumpleFiltro=${esLugarTres}`);
+      console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", nombreLugar="${inscripto.nombreLugar}", modo="${inscripto.nombreModo}", ✅OBLIGATORIO_lugar_3=${esLugarTres}`);
       
       return esLugarTres;
     });

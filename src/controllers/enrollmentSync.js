@@ -155,22 +155,100 @@ export const syncSingleExamEnrollment = async (req, res) => {
       });
     }
 
-    // Usar la lógica real de consulta a UCASAL (igual que en examenes.js)
-    const enrollmentResult = await fetchRealEnrollmentFromUcasal(exam, codigoMateria, areaTema, carreraTotem);
+    // Usar la lógica real de consulta a UCASAL (IDÉNTICA al endpoint de inscripciones)
+    let enrollmentResult;
     
-    if (!enrollmentResult.success) {
-      return res.status(400).json({
-        success: false,
-        error: enrollmentResult.error || 'Error consultando API de UCASAL',
-        data: {
-          exam: {
-            id: exam.id,
-            nombre: exam.nombreMateria,
-            cantidadInscriptos: exam.cantidadInscriptos || 0
-          }
+    // 🔧 CONSULTA IDÉNTICA: Replicar exactamente la misma lógica del endpoint /inscripciones
+    console.log(`📡 Consultando materia ${codigoMateria} con areaTema ${areaTema} y carrera ${carreraTotem}`);
+
+    // Construir fechas exactamente igual que inscripciones.js
+    const hoy = new Date();
+    const fechaDesde = `${hoy.getDate().toString().padStart(2, '0')}/${(hoy.getMonth() + 1).toString().padStart(2, '0')}/${hoy.getFullYear()}`;
+    
+    const futuro = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const fechaHasta = `${futuro.getDate().toString().padStart(2, '0')}/${(futuro.getMonth() + 1).toString().padStart(2, '0')}/${futuro.getFullYear()}`;
+
+    const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
+    
+    console.log(`📡 URL de consulta: ${apiUrl}`);
+    
+    try {
+      const response = await fetch(apiUrl);
+      
+      if (!response.ok) {
+        throw new Error(`Error UCASAL: ${response.status} - ${response.statusText}`);
+      }
+
+      const datosCompletos = await response.json();
+      
+      if (!Array.isArray(datosCompletos)) {
+        throw new Error('Respuesta de UCASAL no es un array');
+      }
+
+      // 4. FILTRAR CORRECTAMENTE por areaTema y carrera como indica el usuario
+      console.log(`🔍 Aplicando filtro: areaTema=${areaTema} && carrera=${carreraTotem}`);
+      
+      const inscriptosFiltrados = datosCompletos.filter(registro => {
+        const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
+        const cumpleCarrera = carreraTotem ? registro.carrera == carreraTotem : true;
+        const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
+        
+        console.log(`Registro: areaTema=${registro.areaTema}, carrera=${registro.carrera}, alumnos=${registro.alumnos?.length || 0}`);
+        console.log(`Cumple filtros: areaTema=${cumpleAreaTema}, carrera=${cumpleCarrera}, tieneAlumnos=${tieneAlumnos}`);
+        
+        return cumpleAreaTema && cumpleCarrera && tieneAlumnos;
+      });
+
+      console.log(`✅ Después del filtro: ${inscriptosFiltrados.length} registros válidos`);
+
+      // 5. Extraer todos los alumnos de los registros filtrados
+      let todosLosInscriptos = [];
+      inscriptosFiltrados.forEach(registro => {
+        if (registro.alumnos && Array.isArray(registro.alumnos)) {
+          todosLosInscriptos = todosLosInscriptos.concat(registro.alumnos);
         }
       });
+
+      console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
+
+      // 6. FILTRAR OBLIGATORIAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
+      // ⚠️ CRITERIO OBLIGATORIO Y EXCLUYENTE: Solo inscriptos con lugar === "3"
+      // NO importa el sector, modo, etc. - SOLO lugar "3" es válido
+      const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
+        const esLugarTres = inscripto.lugar === "3";
+        
+        console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", nombreLugar="${inscripto.nombreLugar}", modo="${inscripto.nombreModo}", ✅OBLIGATORIO_lugar_3=${esLugarTres}`);
+        
+        return esLugarTres;
+      });
+
+      console.log(`🎓 Inscriptos de modalidad virtual: ${inscriptosVirtuales.length} de ${todosLosInscriptos.length} totales`);
+
+      // 7. Formatear inscriptos virtuales (idéntico a inscripciones.js)
+      const inscriptosFormateados = inscriptosVirtuales.map(inscripto => ({
+        dni: inscripto.ndocu,
+        nombre: inscripto.apen,
+        lugar: inscripto.nombreLugar,
+        sector: inscripto.nombreSector,
+        modo: inscripto.nombreModo,
+        fechaInscripcion: inscripto.fecActa
+      }));
+
+      enrollmentResult = {
+        success: true,
+        cantidadInscriptos: inscriptosVirtuales.length,
+        inscriptos: inscriptosFormateados,
+        fechaConsulta: new Date()
+      };
+      
+    } catch (error) {
+      console.error('❌ Error consultando UCASAL en enrollmentSync:', error);
+      enrollmentResult = {
+        success: false,
+        error: error.message || 'Error conectando con UCASAL'
+      };
     }
+
 
     // Update exam with new enrollment count
     const updatedExam = await prisma.examen.update({
@@ -189,10 +267,21 @@ export const syncSingleExamEnrollment = async (req, res) => {
 
     res.json({
       success: true,
-      message: `Inscripciones actualizadas: ${enrollmentResult.cantidadInscriptos} estudiantes`,
+      message: `Sincronización de inscriptos completada para examen ${examId}`,
       data: {
-        exam: updatedExam,
-        cantidadInscriptos: enrollmentResult.cantidadInscriptos,
+        enrollmentCount: enrollmentResult.cantidadInscriptos, // 🔧 CORRECCIÓN: usar enrollmentCount para consistencia
+        cantidadInscriptos: enrollmentResult.cantidadInscriptos, // Mantener también para compatibilidad
+        exam: {
+          id: updatedExam.id,
+          nombre: updatedExam.nombreMateria,
+          fecha: updatedExam.fecha,
+          hora: updatedExam.hora,
+          carrera: updatedExam.carrera.nombre,
+          facultad: updatedExam.carrera.facultad.nombre,
+          aula: updatedExam.aula,
+          materiaCode: codigoMateria,
+          areaTema: areaTema
+        },
         inscriptos: enrollmentResult.inscriptos || [],
         lastSync: new Date()
       }
@@ -343,6 +432,10 @@ async function fetchRealEnrollmentFromUcasal(exam, codigoMateria, areaTema, carr
   try {
     console.log(`🌐 Consultando UCASAL para examen ${exam.id}: materia=${codigoMateria}, areaTema=${areaTema}, carrera=${carreraTotem}`);
 
+    if (!areaTema || !carreraTotem) {
+      console.warn(`⚠️ ADVERTENCIA: areaTema=${areaTema}, carreraTotem=${carreraTotem} - uno o ambos valores son nulos/undefined`);
+    }
+
     // Construir fechas para la consulta
     const fechaDesde = new Date().toLocaleDateString('es-AR', {
       day: '2-digit',
@@ -384,6 +477,9 @@ async function fetchRealEnrollmentFromUcasal(exam, codigoMateria, areaTema, carr
       const cumpleCarrera = carreraTotem ? registro.carrera == carreraTotem : true;
       const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
       
+      console.log(`📋 Registro: areaTema=${registro.areaTema}, carrera=${registro.carrera}, alumnos=${registro.alumnos?.length || 0}`);
+      console.log(`   Cumple filtros: areaTema=${cumpleAreaTema}, carrera=${cumpleCarrera}, tieneAlumnos=${tieneAlumnos}`);
+      
       return cumpleAreaTema && cumpleCarrera && tieneAlumnos;
     });
 
@@ -399,9 +495,13 @@ async function fetchRealEnrollmentFromUcasal(exam, codigoMateria, areaTema, carr
 
     console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
 
-    // Filtrar ÚNICAMENTE por LUGAR "3" (SALTA - DISTANCIA)
+    // FILTRAR OBLIGATORIAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
+    // ⚠️ CRITERIO OBLIGATORIO Y EXCLUYENTE: Solo inscriptos con lugar === "3"
+    // NO importa el sector, modo, etc. - SOLO lugar "3" es válido para modalidad virtual
     const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
-      return inscripto.lugar === "3";
+      const esLugarTres = inscripto.lugar === "3";
+      console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", areaTema="${inscripto.areaTema}", carrera="${inscripto.carrera}", cumpleLugar3=${esLugarTres}`);
+      return esLugarTres;
     });
 
     console.log(`🎓 Inscriptos con LUGAR=3: ${inscriptosVirtuales.length} de ${todosLosInscriptos.length} totales`);
