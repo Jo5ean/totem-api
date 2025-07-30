@@ -1,4 +1,4 @@
-import { prisma } from '../../../../lib/db.js';
+import prisma from '../../../../lib/db.js';
 import { withCors } from '../../../../lib/cors.js';
 
 async function handler(req, res) {
@@ -20,8 +20,6 @@ async function handler(req, res) {
       error: 'Error interno del servidor',
       message: error.message 
     });
-  } finally {
-    await prisma.$disconnect();
   }
 }
 

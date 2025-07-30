@@ -20,17 +20,12 @@ router.get('/examenes/:dni', async (req, res) => {
 
   try {
     // 1. Consultar API externa de UCASAL
-    const fechaDesde = new Date().toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric'
-    });
+    // ✅ FORMATO CORRECTO: dd/mm/yyyy con CEROS OBLIGATORIOS como espera la API de UCASAL
+    const hoy = new Date();
+    const fechaDesde = `${hoy.getDate().toString().padStart(2, '0')}/${(hoy.getMonth() + 1).toString().padStart(2, '0')}/${hoy.getFullYear()}`;
     
-    const fechaHasta = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const futuro = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const fechaHasta = `${futuro.getDate().toString().padStart(2, '0')}/${(futuro.getMonth() + 1).toString().padStart(2, '0')}/${futuro.getFullYear()}`;
 
     const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/DNI-LE-LC/${dni}?fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
     

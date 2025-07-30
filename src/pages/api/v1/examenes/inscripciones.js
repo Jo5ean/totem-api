@@ -38,17 +38,12 @@ export default async function handler(req, res) {
 
     // 2. Para cada combinación, consultar la API externa y contar inscriptos
     const resultadosInscripciones = [];
-    const fechaDesde = new Date().toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit', 
-      year: 'numeric'
-    });
+    // ✅ FORMATO CORRECTO: dd/mm/yyyy con CEROS OBLIGATORIOS como espera la API de UCASAL
+    const hoy = new Date();
+    const fechaDesde = `${hoy.getDate().toString().padStart(2, '0')}/${(hoy.getMonth() + 1).toString().padStart(2, '0')}/${hoy.getFullYear()}`;
     
-    const fechaHasta = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toLocaleDateString('es-AR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
+    const futuro = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const fechaHasta = `${futuro.getDate().toString().padStart(2, '0')}/${(futuro.getMonth() + 1).toString().padStart(2, '0')}/${futuro.getFullYear()}`;
 
     let totalConsultas = 0;
     let consultasExitosas = 0;
