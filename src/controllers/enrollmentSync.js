@@ -9,7 +9,9 @@ const API_KEY = process.env.EXTERNAL_API_KEY;
 
 /**
  * Daily enrollment synchronization (cron job)
- * Syncs all active exams with external enrollment system
+ * Syncs all active exams with UCASAL API using real enrollment data
+ * 🕐 Designed to run automatically every early morning (e.g., 4:00 AM)
+ * 📊 When administrators arrive, enrollment data is already updated
  */
 export const dailyEnrollmentSync = async (req, res) => {
   const syncStart = new Date();
@@ -33,9 +35,29 @@ export const dailyEnrollmentSync = async (req, res) => {
     // Process each exam
     for (const exam of exams) {
       try {
-        // 🔧 CAMBIO: No usar fetchEnrollmentFromExternalAPI que no filtra correctamente
-        // Usar mock data temporal hasta que se implemente correctamente
-        const enrollmentCount = Math.floor(Math.random() * 10) + 1; // Mock data
+        console.log(`� Processing exam ${exam.id}: ${exam.nombreMateria}`);
+        
+        // Obtener datos del TOTEM para materia y areaTema
+        const examenConTotem = await prisma.examen.findUnique({
+          where: { id: exam.id },
+          include: { examenTotem: true }
+        });
+
+        let codigoMateria = null;
+        let areaTema = null;
+        
+        if (examenConTotem?.examenTotem) {
+          codigoMateria = examenConTotem.examenTotem.materiaTotem;
+          areaTema = examenConTotem.examenTotem.areaTemaTotem;
+        }
+
+        if (!codigoMateria) {
+          console.log(`⚠️ Exam ${exam.id} sin código de materia, saltando...`);
+          continue;
+        }
+
+        // Consultar UCASAL con la misma lógica que syncSingleExamEnrollment
+        const enrollmentCount = await consultarInscriptosUCASAL(codigoMateria, areaTema, exam.id);
         
         if (enrollmentCount !== null) {
           await prisma.examen.update({
@@ -49,6 +71,7 @@ export const dailyEnrollmentSync = async (req, res) => {
           console.log(`✅ Updated exam ${exam.id}: ${enrollmentCount} students`);
         } else {
           console.log(`⚠️ No enrollment data for exam ${exam.id}`);
+          totalErrors++;
         }
       } catch (error) {
         totalErrors++;
@@ -420,6 +443,62 @@ async function fetchEnrollmentFromExternalAPI(exam) {
     });
 
     // Retornar null para indicar error, pero no fallar completamente
+    return null;
+  }
+}
+
+/**
+ * Consultar inscriptos en UCASAL para un examen específico
+ * Usa la misma lógica que syncSingleExamEnrollment y inscripciones.js
+ */
+async function consultarInscriptosUCASAL(codigoMateria, areaTema, examId) {
+  try {
+    console.log(`📡 Consultando UCASAL: materia ${codigoMateria}, areaTema ${areaTema}`);
+
+    // Construir fechas (mismo formato que otros endpoints)
+    const hoy = new Date();
+    const fechaDesde = `${hoy.getDate().toString().padStart(2, '0')}/${(hoy.getMonth() + 1).toString().padStart(2, '0')}/${hoy.getFullYear()}`;
+    
+    const futuro = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
+    const fechaHasta = `${futuro.getDate().toString().padStart(2, '0')}/${(futuro.getMonth() + 1).toString().padStart(2, '0')}/${futuro.getFullYear()}`;
+
+    const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
+    
+    const response = await fetch(apiUrl);
+    
+    if (!response.ok) {
+      throw new Error(`Error UCASAL: ${response.status} - ${response.statusText}`);
+    }
+
+    const datosCompletos = await response.json();
+    
+    if (!Array.isArray(datosCompletos)) {
+      throw new Error('Respuesta de UCASAL no es un array');
+    }
+
+    // Filtrar por areaTema y que tenga alumnos (SIN carrera para evitar inconsistencias)
+    const inscriptosFiltrados = datosCompletos.filter(registro => {
+      const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
+      const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
+      return cumpleAreaTema && tieneAlumnos;
+    });
+
+    // Extraer todos los alumnos
+    let todosLosInscriptos = [];
+    inscriptosFiltrados.forEach(registro => {
+      if (registro.alumnos && Array.isArray(registro.alumnos)) {
+        todosLosInscriptos = todosLosInscriptos.concat(registro.alumnos);
+      }
+    });
+
+    // Filtrar por lugar "3" (virtual)
+    const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => inscripto.lugar === "3");
+
+    console.log(`🎓 Exam ${examId}: ${inscriptosVirtuales.length} inscriptos virtuales encontrados`);
+    return inscriptosVirtuales.length;
+
+  } catch (error) {
+    console.error(`❌ Error consultando UCASAL para exam ${examId}:`, error.message);
     return null;
   }
 }
