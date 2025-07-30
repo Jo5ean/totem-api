@@ -149,18 +149,17 @@ async function handler(req, res) {
       });
     }
 
-    // 4. FILTRAR CORRECTAMENTE por areaTema y carrera como indica el usuario
-    console.log(`🔍 Aplicando filtro: areaTema=${areaTema} && carrera=${carreraTotem}`);
+    // 4. FILTRAR CORRECTAMENTE por areaTema (removido filtro de carrera para evitar inconsistencias)
+    console.log(`🔍 Aplicando filtro: areaTema=${areaTema} (carrera removida por inconsistencias)`);
     
     const inscriptosFiltrados = datosCompletos.filter(registro => {
       const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
-      const cumpleCarrera = carreraTotem ? registro.carrera == carreraTotem : true;
       const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
       
       console.log(`Registro: areaTema=${registro.areaTema}, carrera=${registro.carrera}, alumnos=${registro.alumnos?.length || 0}`);
-      console.log(`Cumple filtros: areaTema=${cumpleAreaTema}, carrera=${cumpleCarrera}, tieneAlumnos=${tieneAlumnos}`);
+      console.log(`Cumple filtros: areaTema=${cumpleAreaTema}, tieneAlumnos=${tieneAlumnos}`);
       
-      return cumpleAreaTema && cumpleCarrera && tieneAlumnos;
+      return cumpleAreaTema && tieneAlumnos;
     });
 
     console.log(`✅ Después del filtro: ${inscriptosFiltrados.length} registros válidos`);

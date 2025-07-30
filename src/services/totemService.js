@@ -814,7 +814,7 @@ class TotemService {
         };
       }
       
-      // 5. Filtrar por areaTema específico
+      // 5. Filtrar por areaTema específico (SIN filtro de carrera para evitar inconsistencias)
       const actasFiltradas = actasData.filter(acta => {
         // Convertir a string para comparación segura
         const materiaActaStr = String(acta.materia).trim();
@@ -828,6 +828,8 @@ class TotemService {
           const areaExamenStr = String(areatema).trim();
           coincideAreaTema = areaActaStr === areaExamenStr;
         }
+        
+        console.log(`🔍 Acta: materia=${acta.materia}, areaTema=${acta.areaTema}, coincideMateria=${coincideMateria}, coincideAreaTema=${coincideAreaTema}`);
         
         return coincideMateria && coincideAreaTema;
       });
