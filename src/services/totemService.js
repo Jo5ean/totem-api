@@ -825,39 +825,61 @@ class TotemService {
         };
       }
       
-      // 5. Filtrar por areaTema específico y fecha exacta del examen
+      // 5. Filtrar por areaTema específico (la fecha ya está en el query de UCASAL)
       const actasFiltradas = actasData.filter(acta => {
-        const coincideAreaTema = !areatema || acta.areaTema === areatema;
-        const coincideMateria = acta.materia === materia_codigo;
+        // Debug: log datos del acta para diagnóstico
+        console.log(`🔍 DEBUG Acta: materia=${acta.materia}, areaTema=${acta.areaTema}, fecha=${acta.fecha}, fechaExamen=${acta.fechaExamen}`);
         
-        // Verificar que la fecha de la acta coincida con la fecha del examen
-        let coincideFecha = false;
-        if (acta.fecha) {
-          const fechaActa = new Date(acta.fecha);
-          coincideFecha = fechaActa.toDateString() === fechaExamen.toDateString();
+        // Convertir a string para comparación segura
+        const materiaActaStr = String(acta.materia).trim();
+        const materiaExamenStr = String(materia_codigo).trim();
+        const coincideMateria = materiaActaStr === materiaExamenStr;
+        
+        // Filtrar por areaTema si está especificado
+        let coincideAreaTema = true;
+        if (areatema && areatema !== 'null' && areatema !== '') {
+          const areaActaStr = String(acta.areaTema || '').trim();
+          const areaExamenStr = String(areatema).trim();
+          coincideAreaTema = areaActaStr === areaExamenStr;
         }
         
-        const cumpleFiltros = coincideAreaTema && coincideMateria && coincideFecha;
+        // 🔧 FIX: No filtrar por fecha aquí ya que UCASAL ya filtra por fechaDesde
+        // La API de UCASAL ya devuelve solo actas desde la fecha especificada
+        
+        const cumpleFiltros = coincideMateria && coincideAreaTema;
         
         if (!cumpleFiltros) {
-          console.log(`🔍 Acta filtrada: areaTema=${acta.areaTema}!=${areatema}, materia=${acta.materia}!=${materia_codigo}, fecha=${acta.fecha}!=${fechaDesdeStr}`);
+          console.log(`❌ Acta rechazada: materia='${materiaActaStr}' vs '${materiaExamenStr}'=${coincideMateria}, areaTema='${acta.areaTema}' vs '${areatema}'=${coincideAreaTema}`);
+        } else {
+          console.log(`✅ Acta aceptada: materia='${materiaActaStr}', areaTema='${acta.areaTema}'`);
         }
         
         return cumpleFiltros;
       });
       
-      console.log(`🎯 Actas filtradas por examen específico (areaTema='${areatema}', fecha='${fechaDesdeStr}'): ${actasFiltradas.length}`);
+      console.log(`🎯 Actas filtradas por criterios específicos (materia='${materia_codigo}', areaTema='${areatema || 'cualquiera'}'): ${actasFiltradas.length} de ${actasData.length} total`);
       
       // Log detallado de las actas filtradas
       if (actasFiltradas.length > 0) {
-        console.log(`📋 Detalle de actas filtradas:`);
-        actasFiltradas.forEach((acta, index) => {
-          console.log(`   Acta ${index + 1}: ID=${acta.id}, Fecha=${acta.fecha}, Estudiantes=${acta.alumnos?.length || 0}`);
+        console.log(`📋 Detalle de actas aceptadas:`);
+        actasFiltradas.slice(0, 5).forEach((acta, index) => {
+          console.log(`   Acta ${index + 1}: ID=${acta.id}, materia=${acta.materia}, areaTema=${acta.areaTema}, estudiantes=${acta.alumnos?.length || 0}`);
         });
+        if (actasFiltradas.length > 5) {
+          console.log(`   ... y ${actasFiltradas.length - 5} actas más`);
+        }
       } else {
-        console.log(`⚠️ No se encontraron actas que coincidan con los filtros`);
-        console.log(`   - Criterios: materia=${materia_codigo}, areaTema=${areatema}, fecha=${fechaDesdeStr}`);
-        console.log(`   - Total actas recibidas: ${actasData.length}`);
+        console.log(`⚠️ No se encontraron actas que coincidan con los criterios`);
+        console.log(`   - Criterios aplicados: materia='${materia_codigo}', areaTema='${areatema || 'cualquiera'}'`);
+        console.log(`   - Total actas recibidas de UCASAL: ${actasData.length}`);
+        
+        // Debug: mostrar algunos ejemplos de lo que sí viene
+        if (actasData.length > 0) {
+          console.log(`   - Ejemplos de actas recibidas:`);
+          actasData.slice(0, 3).forEach((acta, index) => {
+            console.log(`     Ejemplo ${index + 1}: materia='${acta.materia}', areaTema='${acta.areaTema}'`);
+          });
+        }
       }
       
       // 6. Extraer estudiantes de todas las actas filtradas
