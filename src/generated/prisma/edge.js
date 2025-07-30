@@ -359,7 +359,7 @@ const config = {
       "value": "prisma-client-js"
     },
     "output": {
-      "value": "D:\\Jose\\Desktop\\UCASAL\\totem-api\\src\\generated\\prisma",
+      "value": "C:\\Users\\jaurbani\\Desktop\\falopa\\carpetaFinal\\totem-api\\src\\generated\\prisma",
       "fromEnvVar": null
     },
     "config": {
@@ -373,7 +373,7 @@ const config = {
       }
     ],
     "previewFeatures": [],
-    "sourceFilePath": "D:\\Jose\\Desktop\\UCASAL\\totem-api\\prisma\\schema.prisma",
+    "sourceFilePath": "C:\\Users\\jaurbani\\Desktop\\falopa\\carpetaFinal\\totem-api\\prisma\\schema.prisma",
     "isCustomOutput": true
   },
   "relativeEnvPaths": {

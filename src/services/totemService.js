@@ -1,6 +1,7 @@
 import prisma from '../lib/db.js';
 import SheetBestService from './sheetBestService.js';
 import UcasalMappingService from './ucasalMappingService.js';
+import { formatDateDDMMYYYY, getNextYearJanuaryFirst } from '../lib/helpers.js';
 import axios from 'axios';
 
 // ID del Google Sheet del TOTEM centralizado
@@ -750,18 +751,22 @@ class TotemService {
       
       console.log(`📋 Datos del examen: materia=${materia_codigo}, areaTema=${areatema}, fecha=${fecha.toDateString()}`);
       
-      // 2. Construir rango de fechas (desde primer examen hasta hoy)
+      // 2. Construir rango de fechas específico para el examen
       const fechaExamen = new Date(fecha);
+      const horaExamen = examen.hora;
+      
+      // Usar fecha específica del examen, no un rango amplio
       const fechaDesde = new Date(fechaExamen);
-      fechaDesde.setMonth(fechaDesde.getMonth() - 2); // 2 meses antes
-      const fechaHasta = new Date(); // Hasta hoy
+      //const fechaHasta = new Date(fechaExamen);
       
-      // ✅ FORMATO CORRECTO: dd/mm/yyyy con CEROS OBLIGATORIOS como espera la API de UCASAL
-      const fechaDesdeStr = `${fechaDesde.getDate().toString().padStart(2, '0')}/${(fechaDesde.getMonth() + 1).toString().padStart(2, '0')}/${fechaDesde.getFullYear()}`;
-      const fechaHastaStr = `${fechaHasta.getDate().toString().padStart(2, '0')}/${(fechaHasta.getMonth() + 1).toString().padStart(2, '0')}/${fechaHasta.getFullYear()}`;
+      // Formatear fechas con DD/MM/YYYY (con ceros a la izquierda)
+      const fechaDesdeStr = formatDateDDMMYYYY(fechaDesde);
+      //const fechaHastaStr = formatDateDDMMYYYY(fechaHasta);
       
-      // 3. Construir URL de UCASAL
-      const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=true&fechaDesde=${fechaDesdeStr}&fechaHasta=${fechaHastaStr}`;
+      console.log(`📅 Consultando examen específico: ${fechaDesdeStr} (materia: ${materia_codigo}, areaTema: ${areatema})`);
+      
+      // 3. Construir URL de UCASAL - CONSULTA MÁS ESPECÍFICA
+      const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=false&fechaDesde=${fechaDesdeStr}`;
       
       console.log(`🔗 Consultando UCASAL: ${ucasalUrl}`);
       
@@ -775,26 +780,66 @@ class TotemService {
       const actasData = response.data;
       console.log(`📊 UCASAL devolvió ${actasData.length} actas`);
       
-      // 5. Filtrar por areaTema específico
-      const actasFiltradas = actasData.filter(acta => 
-        acta.areaTema === areatema && acta.materia === materia_codigo
-      );
+      // 5. Filtrar por areaTema específico y fecha exacta del examen
+      const actasFiltradas = actasData.filter(acta => {
+        const coincideAreaTema = acta.areaTema === areatema;
+        const coincideMateria = acta.materia === materia_codigo;
+        
+        // Verificar que la fecha de la acta coincida con la fecha del examen
+        let coincideFecha = false;
+        if (acta.fecha) {
+          const fechaActa = new Date(acta.fecha);
+          coincideFecha = fechaActa.toDateString() === fechaExamen.toDateString();
+        }
+        
+        return coincideAreaTema && coincideMateria && coincideFecha;
+      });
       
-      console.log(`🎯 Actas filtradas por areaTema '${areatema}': ${actasFiltradas.length}`);
+      console.log(`🎯 Actas filtradas por examen específico (areaTema='${areatema}', fecha='${fechaDesdeStr}'): ${actasFiltradas.length}`);
+      
+      // Log detallado de las actas filtradas
+      if (actasFiltradas.length > 0) {
+        console.log(`📋 Detalle de actas filtradas:`);
+        actasFiltradas.forEach((acta, index) => {
+          console.log(`   Acta ${index + 1}: ID=${acta.id}, Fecha=${acta.fecha}, Estudiantes=${acta.alumnos?.length || 0}`);
+        });
+      }
       
       // 6. Extraer estudiantes de todas las actas filtradas
       let estudiantesTotal = [];
+      let estudiantesUnicos = new Set(); // Para detectar duplicados
+      
       for (const acta of actasFiltradas) {
         if (acta.alumnos && Array.isArray(acta.alumnos)) {
-          estudiantesTotal = estudiantesTotal.concat(acta.alumnos);
+          console.log(`📝 Procesando acta ${acta.id}: ${acta.alumnos.length} estudiantes`);
+          
+          for (const alumno of acta.alumnos) {
+            estudiantesTotal.push(alumno);
+            estudiantesUnicos.add(alumno.ndocu); // Agregar DNI al Set para detectar duplicados
+          }
         }
       }
       
       console.log(`👥 Total estudiantes encontrados: ${estudiantesTotal.length}`);
+      console.log(`🔍 Estudiantes únicos (por DNI): ${estudiantesUnicos.size}`);
+      
+      if (estudiantesTotal.length !== estudiantesUnicos.size) {
+        console.log(`⚠️ ADVERTENCIA: Hay ${estudiantesTotal.length - estudiantesUnicos.size} estudiantes duplicados`);
+      }
       
       // 7. Crear registros EstudianteExamen
       let estudiantesCreados = 0;
+      let estudiantesProcesados = new Set(); // Para evitar duplicados en la BD
+      
       for (const alumno of estudiantesTotal) {
+        // Evitar duplicados por DNI
+        if (estudiantesProcesados.has(alumno.ndocu)) {
+          console.log(`⏭️ Saltando estudiante duplicado: ${alumno.ndocu}`);
+          continue;
+        }
+        
+        estudiantesProcesados.add(alumno.ndocu);
+        
         try {
           // Verificar si el estudiante ya existe
           await prisma.estudiante.upsert({

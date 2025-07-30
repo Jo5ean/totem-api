@@ -32,17 +32,23 @@ async function getAulas(req, res) {
   try {
     const { activa, sede } = req.query;
     
+    console.log('🔍 GET /api/v1/aulas - Parámetros:', { activa, sede });
+    
     const filtros = {};
     
-    // Filtrar por activa
+    // Filtrar por activa (por defecto solo activas)
     if (activa !== undefined) {
       filtros.activa = activa === 'true';
+    } else {
+      filtros.activa = true; // Por defecto solo aulas activas
     }
     
     // Filtrar por sede
     if (sede) {
       filtros.sede = sede;
     }
+    
+    console.log('📋 Filtros aplicados:', filtros);
     
     const aulas = await prisma.aula.findMany({
       where: filtros,
@@ -52,22 +58,33 @@ async function getAulas(req, res) {
       ]
     });
     
-    // Sin estadísticas por ahora - solo devolver aulas básicas
+    console.log(`✅ Encontradas ${aulas.length} aulas`);
+    
+    // Agregar estadísticas básicas
     const aulasConEstadisticas = aulas.map(aula => ({
-      ...aula
+      ...aula,
+      estadisticas: {
+        examenesAsignados: 0, // Se puede calcular si es necesario
+        capacidadDisponible: aula.capacidad,
+        porcentajeOcupacion: 0
+      }
     }));
     
     return res.status(200).json({
       success: true,
       aulas: aulasConEstadisticas,
-      total: aulasConEstadisticas.length
+      total: aulasConEstadisticas.length,
+      filtros: filtros,
+      timestamp: new Date().toISOString()
     });
     
   } catch (error) {
-    console.error('Error obteniendo aulas:', error);
+    console.error('❌ Error obteniendo aulas:', error);
     return res.status(500).json({ 
+      success: false,
       error: 'Error obteniendo aulas',
-      message: error.message 
+      message: error.message,
+      timestamp: new Date().toISOString()
     });
   }
 }

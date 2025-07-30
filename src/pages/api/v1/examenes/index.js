@@ -92,6 +92,12 @@ export default async function handler(req, res) {
             select: {
               dataOriginal: true
             }
+          },
+          // Agregar conteo de estudiantes inscriptos
+          _count: {
+            select: {
+              estudianteExamenes: true
+            }
           }
         },
         orderBy: [
@@ -104,6 +110,13 @@ export default async function handler(req, res) {
       prisma.examen.count({ where })
     ]);
 
+    // Procesar exámenes para incluir cantidad de inscriptos
+    const examenesProcesados = examenes.map(examen => ({
+      ...examen,
+      cantidadInscriptos: examen.cantidadInscriptos || examen._count.estudianteExamenes || 0,
+      _count: undefined // Remover campo interno
+    }));
+
     // Información de paginación
     const totalPages = Math.ceil(total / limitNumber);
     const hasNext = pageNumber < totalPages;
@@ -111,7 +124,7 @@ export default async function handler(req, res) {
 
     return res.status(200).json({
       success: true,
-      data: examenes,
+      data: examenesProcesados,
       pagination: {
         page: pageNumber,
         limit: limitNumber,
