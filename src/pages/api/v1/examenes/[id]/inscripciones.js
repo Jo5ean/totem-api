@@ -308,7 +308,7 @@ async function sugerirAula(cantidadInscriptos) {
   try {
     const aulas = await prisma.aula.findMany({
       where: { 
-        disponible: true,
+        activa: true,
         capacidad: {
           gte: cantidadInscriptos
         }

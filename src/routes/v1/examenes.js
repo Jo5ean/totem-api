@@ -170,13 +170,13 @@ router.get('/por-fecha', async (req, res) => {
         id: true,
         nombre: true,
         capacidad: true,
-        ubicacion: true,
-        disponible: true // Incluir el campo disponible para referencia
+        sede: true,
+        activa: true // Incluir el campo activa para referencia
       },
       orderBy: { nombre: 'asc' }
     });
     
-    console.log(` Aulas encontradas: ${aulasDisponibles.length} (disponibles: ${aulasDisponibles.filter(a => a.disponible).length})`);
+    console.log(` Aulas encontradas: ${aulasDisponibles.length} (activas: ${aulasDisponibles.filter(a => a.activa).length})`);
     
     // NUEVA FUNCIONALIDAD: Agrupar carreras por estado de inscriptos
     const carrerasPorEstado = await agruparCarrerasPorInscriptos(examenes);

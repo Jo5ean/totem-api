@@ -41,7 +41,7 @@ export default async function handler(req, res) {
       prisma.examen.count({ where: { aulaId: null } }),
       
       // Aulas disponibles
-      prisma.aula.count({ where: { disponible: true } }),
+      prisma.aula.count({ where: { activa: true } }),
       
       // Próximos exámenes (próximos 30 días)
       prisma.examen.count({

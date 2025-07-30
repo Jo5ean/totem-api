@@ -132,8 +132,8 @@ class AsignacionAulaService {
           data: {
             nombre: 'Notebooks',
             capacidad: 26,
-            ubicacion: 'Virtual - Notebooks portátiles',
-            disponible: true
+            sede: 'Virtual - Notebooks portátiles',
+            activa: true
           }
         });
       }
@@ -151,8 +151,8 @@ class AsignacionAulaService {
           data: {
             nombre: 'Laboratorio Informático',
             capacidad: 34,
-            ubicacion: 'Laboratorio de computación',
-            disponible: true
+            sede: 'Laboratorio de computación',
+            activa: true
           }
         });
       }
@@ -178,7 +178,7 @@ class AsignacionAulaService {
     const aulasRegulares = await prisma.aula.findMany({
       where: {
         nombre: { in: ['Aula 4', 'Aula 8', 'Aula 12'] },
-        disponible: true,
+        activa: true,
         capacidad: { gte: cantidadEstudiantes }
       },
       orderBy: { capacidad: 'asc' } // Priorizar aula más pequeña que cubra la necesidad
