@@ -157,7 +157,9 @@ router.get('/por-fecha', async (req, res) => {
           ...examen.aula,
           nombre: formatearNombreAula(examen.aula.nombre)
         } : null,
-        cantidadInscriptos: examen.cantidadInscriptos !== null ? examen.cantidadInscriptos : 'Sin consultar',
+        cantidadInscriptos: examen.cantidadInscriptos !== null ? examen.cantidadInscriptos : 0,
+        inscriptosConsultados: examen.cantidadInscriptos !== null, // Indicador si fue consultado
+        fechaUltConsulta: examen.fechaUltConsulta,
         necesitaAsignacion: !examen.aulaId
       });
       
