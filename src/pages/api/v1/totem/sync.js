@@ -15,19 +15,37 @@ async function handler(req, res) {
   try {
     console.log('Iniciando sincronización TOTEM centralizada...');
     
-    const result = await totemService.syncTotemData();
+    // 🚀 INICIAR PROCESO EN BACKGROUND PARA EVITAR TIMEOUT
+    const syncPromise = totemService.syncTotemData();
     
-    return res.status(200).json({
+    // ⚡ RESPUESTA INMEDIATA SIN ESPERAR
+    res.status(202).json({
       success: true,
-      message: 'Sincronización TOTEM completada exitosamente',
-      data: result
+      message: 'Sincronización TOTEM iniciada correctamente',
+      status: 'processing',
+      note: 'El proceso continúa ejecutándose en segundo plano. Consulta los logs de Railway para ver el progreso.',
+      timestamp: new Date().toISOString()
     });
     
+    // 🔄 CONTINUAR PROCESAMIENTO EN BACKGROUND
+    syncPromise
+      .then(result => {
+        console.log('✅ Sincronización TOTEM completada exitosamente:', {
+          examensCreated: result.data?.examensCreated || 0,
+          examensUpdated: result.data?.examensUpdated || 0,
+          duration: result.duration,
+          timestamp: result.timestamp
+        });
+      })
+      .catch(error => {
+        console.error('❌ Error en sincronización TOTEM (background):', error.message);
+      });
+    
   } catch (error) {
-    console.error('Error en sincronización TOTEM:', error);
+    console.error('Error iniciando sincronización TOTEM:', error);
     return res.status(500).json({
       success: false,
-      error: 'Error en la sincronización TOTEM',
+      error: 'Error iniciando la sincronización TOTEM',
       message: error.message
     });
   }

@@ -735,7 +735,7 @@ class TotemService {
    */
   async obtenerInscriptosUcasal(examenId) {
     try {
-      console.log(`🌐 Obteniendo inscriptos de UCASAL para examen ID: ${examenId}`);
+      console.log(`🔍 Consultando inscriptos: examen ${examenId}`);
       
       // 1. Obtener datos del examen
       const examen = await prisma.examen.findUnique({
@@ -749,8 +749,6 @@ class TotemService {
       
       const { materia_codigo, areatema, fecha } = examen;
       
-      console.log(`📋 Datos del examen: materia=${materia_codigo}, areaTema=${areatema}, fecha=${fecha.toDateString()}`);
-      
       // Validar que tenemos los datos necesarios
       if (!materia_codigo) {
         throw new Error(`Examen ${examenId} no tiene código de materia definido`);
@@ -758,20 +756,12 @@ class TotemService {
       
       // 2. Construir rango de fechas específico para el examen
       const fechaExamen = new Date(fecha);
-      const horaExamen = examen.hora;
-      
-      // Usar fecha específica del examen, no un rango amplio
-      const fechaDesde = new Date(fechaExamen);
       
       // Formatear fechas con DD/MM/YYYY (con ceros a la izquierda)
-      const fechaDesdeStr = formatDateDDMMYYYY(fechaDesde);
-      
-      console.log(`📅 Consultando examen específico: ${fechaDesdeStr} (materia: ${materia_codigo}, areaTema: ${areatema})`);
+      const fechaDesdeStr = formatDateDDMMYYYY(fechaExamen);
       
       // 3. Construir URL de UCASAL - CONSULTA MÁS ESPECÍFICA
       const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=false&fechaDesde=${fechaDesdeStr}`;
-      
-      console.log(`🔗 Consultando UCASAL: ${ucasalUrl}`);
       
       // 4. Hacer petición a UCASAL con timeout y retry
       let response;
@@ -808,11 +798,10 @@ class TotemService {
       }
       
       const actasData = response.data;
-      console.log(`📊 UCASAL devolvió ${Array.isArray(actasData) ? actasData.length : 'datos inválidos'} actas`);
       
       // Validar que la respuesta sea un array
       if (!Array.isArray(actasData)) {
-        console.log(`⚠️ Respuesta de UCASAL no es un array para materia ${materia_codigo}`);
+        console.log(`⚠️ Sin actas para materia ${materia_codigo}`);
         return {
           success: true,
           examenId,
@@ -825,11 +814,8 @@ class TotemService {
         };
       }
       
-      // 5. Filtrar por areaTema específico (la fecha ya está en el query de UCASAL)
+      // 5. Filtrar por areaTema específico
       const actasFiltradas = actasData.filter(acta => {
-        // Debug: log datos del acta para diagnóstico
-        console.log(`🔍 DEBUG Acta: materia=${acta.materia}, areaTema=${acta.areaTema}, fecha=${acta.fecha}, fechaExamen=${acta.fechaExamen}`);
-        
         // Convertir a string para comparación segura
         const materiaActaStr = String(acta.materia).trim();
         const materiaExamenStr = String(materia_codigo).trim();
@@ -843,76 +829,33 @@ class TotemService {
           coincideAreaTema = areaActaStr === areaExamenStr;
         }
         
-        // 🔧 FIX: No filtrar por fecha aquí ya que UCASAL ya filtra por fechaDesde
-        // La API de UCASAL ya devuelve solo actas desde la fecha especificada
-        
-        const cumpleFiltros = coincideMateria && coincideAreaTema;
-        
-        if (!cumpleFiltros) {
-          console.log(`❌ Acta rechazada: materia='${materiaActaStr}' vs '${materiaExamenStr}'=${coincideMateria}, areaTema='${acta.areaTema}' vs '${areatema}'=${coincideAreaTema}`);
-        } else {
-          console.log(`✅ Acta aceptada: materia='${materiaActaStr}', areaTema='${acta.areaTema}'`);
-        }
-        
-        return cumpleFiltros;
+        return coincideMateria && coincideAreaTema;
       });
       
-      console.log(`🎯 Actas filtradas por criterios específicos (materia='${materia_codigo}', areaTema='${areatema || 'cualquiera'}'): ${actasFiltradas.length} de ${actasData.length} total`);
-      
-      // Log detallado de las actas filtradas
-      if (actasFiltradas.length > 0) {
-        console.log(`📋 Detalle de actas aceptadas:`);
-        actasFiltradas.slice(0, 5).forEach((acta, index) => {
-          console.log(`   Acta ${index + 1}: ID=${acta.id}, materia=${acta.materia}, areaTema=${acta.areaTema}, estudiantes=${acta.alumnos?.length || 0}`);
-        });
-        if (actasFiltradas.length > 5) {
-          console.log(`   ... y ${actasFiltradas.length - 5} actas más`);
-        }
-      } else {
-        console.log(`⚠️ No se encontraron actas que coincidan con los criterios`);
-        console.log(`   - Criterios aplicados: materia='${materia_codigo}', areaTema='${areatema || 'cualquiera'}'`);
-        console.log(`   - Total actas recibidas de UCASAL: ${actasData.length}`);
-        
-        // Debug: mostrar algunos ejemplos de lo que sí viene
-        if (actasData.length > 0) {
-          console.log(`   - Ejemplos de actas recibidas:`);
-          actasData.slice(0, 3).forEach((acta, index) => {
-            console.log(`     Ejemplo ${index + 1}: materia='${acta.materia}', areaTema='${acta.areaTema}'`);
-          });
-        }
-      }
+      console.log(`✅ ${actasFiltradas.length} actas encontradas`);
       
       // 6. Extraer estudiantes de todas las actas filtradas
       let estudiantesTotal = [];
-      let estudiantesUnicos = new Set(); // Para detectar duplicados
+      let estudiantesUnicos = new Set();
       
       for (const acta of actasFiltradas) {
         if (acta.alumnos && Array.isArray(acta.alumnos)) {
-          console.log(`📝 Procesando acta ${acta.id}: ${acta.alumnos.length} estudiantes`);
-          
           for (const alumno of acta.alumnos) {
             estudiantesTotal.push(alumno);
-            estudiantesUnicos.add(alumno.ndocu); // Agregar DNI al Set para detectar duplicados
+            estudiantesUnicos.add(alumno.ndocu);
           }
         }
       }
       
-      console.log(`👥 Total estudiantes encontrados: ${estudiantesTotal.length}`);
-      console.log(`🔍 Estudiantes únicos (por DNI): ${estudiantesUnicos.size}`);
-      
-      if (estudiantesTotal.length !== estudiantesUnicos.size) {
-        console.log(`⚠️ ADVERTENCIA: Hay ${estudiantesTotal.length - estudiantesUnicos.size} estudiantes duplicados`);
-      }
+      console.log(`👥 ${estudiantesTotal.length} estudiantes procesados`);
       
       // 7. Crear registros EstudianteExamen
       let estudiantesCreados = 0;
-      let estudiantesProcesados = new Set(); // Para evitar duplicados en la BD
-      let erroresEstudiantes = [];
+      let estudiantesProcesados = new Set();
       
       for (const alumno of estudiantesTotal) {
         // Evitar duplicados por DNI
         if (estudiantesProcesados.has(alumno.ndocu)) {
-          console.log(`⏭️ Saltando estudiante duplicado: ${alumno.ndocu}`);
           continue;
         }
         
@@ -958,9 +901,7 @@ class TotemService {
           
           estudiantesCreados++;
         } catch (error) {
-          const errorMsg = `Error creando estudiante ${alumno.ndocu}: ${error.message}`;
-          console.error(errorMsg);
-          erroresEstudiantes.push(errorMsg);
+          console.error(`Error con estudiante ${alumno.ndocu}:`, error.message);
         }
       }
       
@@ -973,8 +914,6 @@ class TotemService {
         }
       });
       
-      console.log(`✅ Match UCASAL completado: ${estudiantesCreados} estudiantes procesados`);
-      
       return {
         success: true,
         examenId,
@@ -982,8 +921,7 @@ class TotemService {
         estudiantesTotal: estudiantesTotal.length,
         estudiantesCreados,
         cantidadInscriptos: estudiantesCreados,
-        fechaConsulta: new Date(),
-        erroresEstudiantes: erroresEstudiantes.length > 0 ? erroresEstudiantes : undefined
+        fechaConsulta: new Date()
       };
       
     } catch (error) {
@@ -1064,13 +1002,10 @@ class TotemService {
    * Solo procesa exámenes con mapeo UCASAL válido
    */
   async syncInscriptosAutomatico(examenes) {
-    console.log(`🔄 Iniciando sincronización automática de inscriptos para ${examenes.length} exámenes...`);
+    console.log(`🔄 Sincronizando inscriptos para ${examenes.length} exámenes...`);
     
     let exitosos = 0;
     let fallidos = 0;
-    let sinCodigoMateria = 0;
-    let mapeoInvalido = 0;
-    const resultados = [];
     
     for (const examen of examenes) {
       try {
@@ -1081,75 +1016,31 @@ class TotemService {
         });
         
         if (!examenCompleto?.examenTotem?.materiaTotem) {
-          console.log(`⚠️ Examen ${examen.id} sin código de materia, omitiendo...`);
-          sinCodigoMateria++;
           continue;
         }
-        
-        const materiaCode = examenCompleto.examenTotem.materiaTotem;
-        const areaTema = examenCompleto.examenTotem.areaTemaTotem;
-        
-        // 🔍 VALIDACIÓN PRE-CONSULTA
-        console.log(`� Validando mapeo UCASAL para examen ${examen.id} (${materiaCode})...`);
-        const validacion = await this.validateUcasalMapping(materiaCode, areaTema);
-        
-        if (!validacion.isValid) {
-          console.log(`❌ Examen ${examen.id} tiene mapeo UCASAL inválido: ${validacion.reason}`);
-          mapeoInvalido++;
-          resultados.push({
-            examenId: examen.id,
-            success: false,
-            error: `Mapeo UCASAL inválido: ${validacion.reason}`,
-            materiaCode
-          });
-          continue;
-        }
-        
-        console.log(`📡 Consultando inscriptos para examen ${examen.id} (${materiaCode}) - Mapeo válido ✅`);
         
         // Consultar inscriptos usando el método existente
         const inscriptosResult = await this.obtenerInscriptosUcasal(examen.id);
         
         if (inscriptosResult && inscriptosResult.success) {
           exitosos++;
-          console.log(`✅ Inscriptos consultados exitosamente para examen ${examen.id}: ${inscriptosResult.cantidadInscriptos} inscriptos`);
         } else {
           fallidos++;
-          console.log(`❌ Error consultando inscriptos para examen ${examen.id}`);
         }
-        
-        resultados.push({
-          examenId: examen.id,
-          success: inscriptosResult?.success || false,
-          cantidadInscriptos: inscriptosResult?.cantidadInscriptos || 0,
-          materiaCode
-        });
         
       } catch (error) {
         fallidos++;
-        console.error(`❌ Error procesando examen ${examen.id}:`, error.message);
-        resultados.push({
-          examenId: examen.id,
-          success: false,
-          error: error.message
-        });
+        console.error(`❌ Error examen ${examen.id}:`, error.message);
       }
     }
     
-    console.log(`🎉 Sincronización automática completada:`);
-    console.log(`   ✅ Exitosos: ${exitosos}`);
-    console.log(`   ❌ Fallidos: ${fallidos}`);
-    console.log(`   ⚠️ Sin código de materia: ${sinCodigoMateria}`);
-    console.log(`   🚫 Mapeo UCASAL inválido: ${mapeoInvalido}`);
+    console.log(`✅ Completado: ${exitosos} exitosos, ${fallidos} fallidos`);
     
     return {
       success: true,
       procesados: examenes.length,
       exitosos,
-      fallidos,
-      sinCodigoMateria,
-      mapeoInvalido,
-      resultados
+      fallidos
     };
   }
 
