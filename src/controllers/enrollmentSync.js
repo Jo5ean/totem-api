@@ -1,7 +1,5 @@
-import { PrismaClient } from '@prisma/client';
+import prisma from '../lib/db.js';
 import axios from 'axios';
-
-const prisma = new PrismaClient();
 
 // Configuration for external enrollment API
 const EXTERNAL_API_URL = process.env.EXTERNAL_ENROLLMENT_API_URL || 'https://api-externa-inscripciones.ucasal.edu.ar';
