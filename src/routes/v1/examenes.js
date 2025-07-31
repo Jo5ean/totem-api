@@ -132,10 +132,10 @@ router.get('/por-fecha', async (req, res) => {
       }
     });
     
-    // 📊 MOSTRAR ESTADO CLARO DE INSCRIPCIONES
-    // Las inscripciones se consultan bajo demanda usando el endpoint /inscripciones
+    // MOSTRAR ESTADO CLARO DE INSCRIPCIONES - DATOS PERSISTENTES
+    // Los datos de inscriptos se mantienen actualizados y persistentes
     
-    // Agrupar por fecha
+    // Agrupar por fecha con datos de inscriptos siempre disponibles
     const examenesPorFecha = examenes.reduce((grupos, examen) => {
       const fechaStr = examen.fecha.toISOString().split('T')[0];
       
@@ -147,20 +147,23 @@ router.get('/por-fecha', async (req, res) => {
         id: examen.id,
         nombre: examen.nombreMateria || `Materia ${examen.examenTotem?.materiaTotem}` || 'Examen sin nombre',
         codigoMateria: examen.examenTotem?.materiaTotem || null,
-        hora: examen.hora ? examen.hora.toTimeString().slice(0, 5) : null,
-        carrera: {
+        fecha: examen.fecha.toISOString().split('T')[0],
+        hora: examen.hora ? examen.hora.toTimeString().split(' ')[0] : null,
+        carrera: examen.carrera ? {
           codigo: examen.carrera.codigo,
           nombre: examen.carrera.nombre,
           facultad: examen.carrera.facultad?.nombre || 'Sin facultad'
-        },
+        } : null,
         aula: examen.aula ? {
           ...examen.aula,
           nombre: formatearNombreAula(examen.aula.nombre)
         } : null,
         cantidadInscriptos: examen.cantidadInscriptos !== null ? examen.cantidadInscriptos : 0,
-        inscriptosConsultados: examen.cantidadInscriptos !== null, // Indicador si fue consultado
+        inscriptosConsultados: examen.cantidadInscriptos !== null,
         fechaUltConsulta: examen.fechaUltConsulta,
-        necesitaAsignacion: !examen.aulaId
+        horaUltConsulta: examen.fechaUltConsulta ? new Date(examen.fechaUltConsulta).toLocaleTimeString('es-AR') : null,
+        necesitaAsignacion: !examen.aulaId,
+        ultimaActualizacion: examen.fechaUltConsulta || examen.updatedAt || new Date()
       });
       
       return grupos;
@@ -185,13 +188,14 @@ router.get('/por-fecha', async (req, res) => {
     
     return res.status(200).json({
       success: true,
-      message: 'Exámenes por fecha obtenidos exitosamente',
+      message: 'Exámenes obtenidos exitosamente',
       data: {
         examenesPorFecha,
         aulasDisponibles,
-        carrerasPorEstado, // Nueva agrupación de carreras
+        carrerasPorEstado,
         totalExamenes: examenes.length,
-        fechas: Object.keys(examenesPorFecha).sort()
+        fechas: Object.keys(examenesPorFecha).sort(),
+        ultimaActualizacion: new Date().toISOString()
       }
     });
     
@@ -435,11 +439,20 @@ router.get('/:id/inscripciones', async (req, res) => {
   }
 });
 
-// POST /api/v1/examenes/:id/asignar-aula - Asignar aula a un examen
+// POST /api/v1/examenes/:id/asignar-aula - Asignar aula a un examen con validación mejorada
 router.post('/:id/asignar-aula', async (req, res) => {
   try {
     const { id } = req.params;
     const { aulaId, observaciones } = req.body;
+    
+    // Validar que se proporcionen todos los campos requeridos
+    if (!id || !aulaId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Datos incompletos',
+        message: 'Se requieren los campos: id (examen) y aulaId'
+      });
+    }
     
     // Validar ID del examen
     const examenId = parseInt(id);
@@ -451,12 +464,13 @@ router.post('/:id/asignar-aula', async (req, res) => {
       });
     }
     
-    // Validar que aulaId sea válido
-    if (!aulaId || isNaN(parseInt(aulaId))) {
+    // Validar ID del aula
+    const aulaIdNum = parseInt(aulaId);
+    if (isNaN(aulaIdNum) || aulaIdNum <= 0) {
       return res.status(400).json({
         success: false,
         error: 'ID de aula inválido',
-        message: 'El aulaId es requerido y debe ser un número válido'
+        message: `El ID del aula debe ser un número válido. Recibido: "${aulaId}"`
       });
     }
     
@@ -465,7 +479,9 @@ router.post('/:id/asignar-aula', async (req, res) => {
       where: { id: examenId },
       include: {
         carrera: {
-          include: { facultad: true }
+          include: {
+            facultad: true
+          }
         },
         aula: true
       }
@@ -475,57 +491,49 @@ router.post('/:id/asignar-aula', async (req, res) => {
       return res.status(404).json({
         success: false,
         error: 'Examen no encontrado',
-        message: `No se encontró examen con ID ${examenId}`
+        message: `No se encontró un examen con ID: ${examenId}`
       });
     }
     
-    // Verificar que el aula existe
+    // Verificar que el aula existe y está activa
     const aula = await prisma.aula.findUnique({
-      where: { id: parseInt(aulaId) }
+      where: { id: aulaIdNum }
     });
     
     if (!aula) {
       return res.status(404).json({
         success: false,
         error: 'Aula no encontrada',
-        message: `No se encontró aula con ID ${aulaId}`
+        message: `No se encontró un aula con ID: ${aulaIdNum}`
       });
     }
     
-    // Determinar si es asignación nueva o cambio
-    const esReasignacion = !!examen.aulaId;
-    const aulaAnterior = examen.aula;
+    if (!aula.activa) {
+      return res.status(400).json({
+        success: false,
+        error: 'Aula inactiva',
+        message: `El aula ${aula.nombre} está inactiva y no puede ser asignada`
+      });
+    }
     
-    // Asignar/cambiar el aula al examen
+    // NOTA: La validación de capacidad se ha eliminado según requerimiento
+    // El aula puede ser asignada independientemente de la capacidad
+    const inscriptos = examen.cantidadInscriptos || 0;
+    
+    // Actualizar el examen con el aula asignada
     const examenActualizado = await prisma.examen.update({
       where: { id: examenId },
       data: {
-        aulaId: parseInt(aulaId),
-        ...(observaciones && { observaciones })
+        aulaId: aulaIdNum,
+        observaciones: observaciones || null,
+        updatedAt: new Date()
       },
       include: {
+        aula: true,
         carrera: {
-          include: { facultad: true }
-        },
-        aula: true
-      }
-    });
-    
-    const mensaje = esReasignacion 
-      ? `Aula cambiada de "${aulaAnterior?.nombre}" a "${aula.nombre}"`
-      : `Aula "${aula.nombre}" asignada exitosamente`;
-    
-    console.log(`✅ ${esReasignacion ? 'Cambio' : 'Asignación'}: Examen ${examenId} → ${aula.nombre}`);
-    
-    return res.status(200).json({
-      success: true,
-      message: mensaje,
-      data: {
-        examen: examenActualizado,
-        asignacion: {
-          tipo: esReasignacion ? 'CAMBIO' : 'NUEVA',
-          aulaAnterior: aulaAnterior,
-          aulaNueva: aula,
+          include: {
+            facultad: true
+          },
           fechaAsignacion: new Date().toISOString()
         }
       }
