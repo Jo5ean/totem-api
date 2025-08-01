@@ -11,7 +11,7 @@ class AsignacionAulaService {
       esParaInformatica: true
     },
     LABORATORIO: {
-      nombre: 'Laboratorio Informático',
+      nombre: 'Laboratorio Informatico',
       capacidad: 34,
       tipo: 'LABORATORIO',
       esParaInformatica: true
@@ -140,16 +140,16 @@ class AsignacionAulaService {
 
       return aulaNotebooks;
     } 
-    // Si son más de 26 → Laboratorio Informático
+    // Si son más de 26 → Laboratorio Informatico
     else {
       let aulaLab = await prisma.aula.findFirst({
-        where: { nombre: 'Laboratorio Informático' }
+        where: { nombre: 'Laboratorio Informatico' }
       });
 
       if (!aulaLab) {
         aulaLab = await prisma.aula.create({
           data: {
-            nombre: 'Laboratorio Informático',
+            nombre: 'Laboratorio Informatico',
             capacidad: 34,
             sede: 'Laboratorio de computación',
             activa: true
@@ -162,7 +162,7 @@ class AsignacionAulaService {
         const tieneConflicto = await this.verificarConflictoHorario(aulaLab.id, examen.fecha, examen.hora);
         
         if (tieneConflicto) {
-          throw new Error(`Laboratorio Informático no disponible en esa fecha y hora`);
+          throw new Error(`Laboratorio Informatico no disponible en esa fecha y hora`);
         }
       }
 
