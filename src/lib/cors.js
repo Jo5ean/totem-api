@@ -5,6 +5,8 @@
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:4321',
+  'http://localhost:4322',
   'http://localhost:5173',
   'https://wwwold.ucasal.edu.ar',
   'https://ucasal.edu.ar',
