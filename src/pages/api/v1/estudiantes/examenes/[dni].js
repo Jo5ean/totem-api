@@ -1,14 +1,16 @@
 import prisma from '../../../../../lib/db.js';
 
-// Cache en memoria para consultas frecuentes (TTL: 5 minutos)
-const cache = new Map();
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+// Cache en memoria para consultas frecuentes (TTL: 5 minutos) - DESACTIVADO
+// const cache = new Map();
+// const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
 
-function getCacheKey(dni) {
+// Función de caché desactivada
+/* function getCacheKey(dni) {
   return `dni_${dni}`;
-}
+} */
 
-function getCachedData(key) {
+// Función de caché desactivada
+/* function getCachedData(key) {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     console.log(`🎯 ===== CACHE HIT ===== para ${key} (${Math.round((Date.now() - cached.timestamp) / 1000)}s de antigüedad)`);
@@ -21,8 +23,15 @@ function getCachedData(key) {
     console.log(`🔍 ===== CACHE MISS ===== para ${key} (primera consulta)`);
   }
   return null;
+} */
+
+// Versión desactivada que siempre devuelve null
+function getCachedData(key) {
+  console.log(`🔄 Caché desactivado para ${key}, siempre consultando datos en vivo`);
+  return null;
 }
 
+// Función de caché desactivada - Solo mantiene la eliminación de duplicados
 function setCacheData(key, data) {
   // Verificar si hay exámenes duplicados (por ID) y eliminarlos
   if (data && data.data && data.data.examenes && Array.isArray(data.data.examenes)) {
@@ -51,12 +60,12 @@ function setCacheData(key, data) {
     }
   }
   
-  // Guardar en caché
-  cache.set(key, {
-    data,
-    timestamp: Date.now()
-  });
-  console.log(`💾 ===== CACHE GUARDADO ===== para ${key} (válido por ${CACHE_TTL/1000}s)`);
+  // Caché desactivado - No guardamos nada
+  // cache.set(key, {
+  //   data,
+  //   timestamp: Date.now()
+  // });
+  console.log(`🔄 Caché desactivado - No se guardan datos para ${key}`);
 }
 
 export default async function handler(req, res) {
@@ -86,17 +95,19 @@ export default async function handler(req, res) {
     });
   }
 
-  // 🚀 PASO 1: Verificar cache primero
-  const cacheKey = getCacheKey(dni);
-  const cachedResult = getCachedData(cacheKey);
+  // 🚀 PASO 1: Verificar cache primero - DESACTIVADO
+  // const cacheKey = getCacheKey(dni);
+  // const cachedResult = getCachedData(cacheKey);
+  // 
+  // if (cachedResult) {
+  //   return res.status(200).json({
+  //     ...cachedResult,
+  //     cached: true,
+  //     cacheTimestamp: new Date().toISOString()
+  //   });
+  // }
   
-  if (cachedResult) {
-    return res.status(200).json({
-      ...cachedResult,
-      cached: true,
-      cacheTimestamp: new Date().toISOString()
-    });
-  }
+  console.log(`🔄 Caché desactivado - Consultando datos en vivo para DNI: ${dni}`);
 
   try {
     console.log(`🔍 Consultando exámenes para DNI: ${dni}`);
@@ -181,14 +192,17 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🚀 PASO 5: Guardar en cache y retornar
-    setCacheData(cacheKey, resultado);
+    // 🚀 PASO 5: Responder (sin caché)
+    const resultadoFinal = apiExternaDisponible ? 
+      await procesarExamenesConApiExterna(dni, examenesExternos) : 
+      await procesarExamenesLocalSolo(dni, examenesLocales);
+    
+    // setCacheData(cacheKey, resultadoFinal); // Caché desactivado
     
     return res.status(200).json({
-      ...resultado,
+      ...resultadoFinal,
       cached: false,
-      apiExternaDisponible,
-      consultadoEn: new Date().toISOString()
+      timestamp: new Date().toISOString()
     });
 
   } catch (error) {
@@ -258,12 +272,14 @@ async function procesarExamenesConApiExterna(dni, examenesExternos) {
   const examenesCompletos = [];
   
   for (const examenExterno of examenesExternos) {
-    console.log('Procesando examen externo:', {
+    console.log('🔍 Procesando examen externo:', {
       materia: examenExterno.materia,
       areaTema: examenExterno.areaTema,
       carrera: examenExterno.carrera,
       nombreMateria: examenExterno.nombreMateria
     });
+    
+    console.log(`🔍 Buscando match para: materia=${examenExterno.materia}, carrera=${examenExterno.carrera}, areaTema=${examenExterno.areaTema}`);
 
     // Buscar match en tabla examenes_totem primero
     const matchTotem = await prisma.examenTotem.findFirst({
@@ -290,6 +306,12 @@ async function procesarExamenesConApiExterna(dni, examenesExternos) {
 
     if (matchTotem) {
       // Match encontrado en examenes_totem
+      console.log(`✅ Match encontrado en examenes_totem:`, {
+        id: matchTotem.id,
+        fecha: matchTotem.examen?.fecha,
+        hora: matchTotem.examen?.hora,
+        aula: matchTotem.examen?.aula?.nombre
+      });
       const examen = matchTotem.examen;
       
       examenesCompletos.push({
@@ -411,8 +433,86 @@ async function procesarExamenesConApiExterna(dni, examenesExternos) {
           }
         });
       } else {
-        // No se encontró match, pero incluir datos básicos de la API externa
-        examenesCompletos.push({
+        // No se encontró match en examenes_totem, intentar búsqueda directa en tabla examenes
+        console.log(`❌ No se encontró match en examenes_totem para materia=${examenExterno.materia}, carrera=${examenExterno.carrera}`);
+        console.log(`🔍 Intentando búsqueda directa en tabla examenes...`);
+        
+        const matchDirecto = await prisma.examen.findFirst({
+          where: {
+            materia_codigo: examenExterno.materia,
+            carrera: {
+              codigo: examenExterno.carrera
+            },
+            fecha: {
+              gte: new Date(examenExterno.fecActa)
+            }
+          },
+          include: {
+            carrera: {
+              include: {
+                facultad: true
+              }
+            },
+            aula: true
+          }
+        });
+        
+        if (matchDirecto) {
+          console.log(`✅ Match directo encontrado en tabla examenes:`, {
+            id: matchDirecto.id,
+            fecha: matchDirecto.fecha,
+            hora: matchDirecto.hora,
+            aula: matchDirecto.aula?.nombre
+          });
+          
+          examenesCompletos.push({
+            estudiante: {
+              dni: examenExterno.ndocu,
+              nombre: examenExterno.apen,
+              lugar: examenExterno.nombreLugar,
+              sector: examenExterno.nombreSector,
+              modo: examenExterno.nombreModo
+            },
+            examen: {
+              id: matchDirecto.id,
+              materia: {
+                codigo: examenExterno.materia,
+                nombre: examenExterno.nombreMateria,
+                nombreCorto: matchDirecto.nombreMateria,
+                areaTema: examenExterno.areaTema
+              },
+              carrera: {
+                codigo: examenExterno.carrera,
+                nombre: matchDirecto.carrera.nombre,
+                facultad: matchDirecto.carrera.facultad.nombre
+              },
+              fecha: matchDirecto.fecha ? matchDirecto.fecha.toISOString().split('T')[0] : null,
+              hora: matchDirecto.hora ? matchDirecto.hora.toTimeString().split(' ')[0] : null,
+              fechaExterna: examenExterno.fecActa,
+              aula: matchDirecto.aula ? {
+                id: matchDirecto.aula.id,
+                nombre: matchDirecto.aula.nombre,
+                capacidad: matchDirecto.aula.capacidad,
+                sede: matchDirecto.aula.sede
+              } : null,
+              tipoExamen: matchDirecto.tipoExamen || 'No especificado',
+              modalidad: matchDirecto.modalidadExamen || 'presencial',
+              observaciones: matchDirecto.observaciones,
+              materialPermitido: matchDirecto.materialPermitido,
+              requierePc: matchDirecto.requierePc || false,
+              docente: matchDirecto.docente
+            },
+            matchStatus: {
+              found: true,
+              source: 'direct_match',
+              matchedBy: ['materia_codigo', 'carrera', 'fecha']
+            }
+          });
+        } else {
+          console.log(`⚠️ PROBLEMA: No se encontró el examen ni en examenes_totem ni en examenes directamente`);
+          console.log(`⚠️ API externa no incluye hora, solo fecha: ${examenExterno.fecActa}`);
+          
+          examenesCompletos.push({
           estudiante: {
             dni: examenExterno.ndocu,
             nombre: examenExterno.apen,
@@ -430,10 +530,12 @@ async function procesarExamenesConApiExterna(dni, examenesExternos) {
               codigo: examenExterno.carrera
             },
             fechaExterna: examenExterno.fecActa,
+            // PROBLEMA: API externa no incluye hora - NECESITA INVESTIGACIÓN
+            hora: null, // Sin hora disponible desde API externa
             aula: null, // Sin asignar
             tipoExamen: 'No especificado',
             modalidad: 'presencial',
-            observaciones: 'Examen no encontrado en base de datos local'
+            observaciones: 'Examen no encontrado en base de datos local - Hora asignada por defecto'
           },
           matchStatus: {
             found: false,
