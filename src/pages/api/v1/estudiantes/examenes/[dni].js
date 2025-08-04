@@ -186,6 +186,13 @@ export default async function handler(req, res) {
       }
     }
 
+    // 🚀 ORDENAR EXÁMENES POR FECHA Y HORA (más próximos primero)
+    examenesCompletos.sort((a, b) => {
+      const fechaA = new Date(`${a.fecha}T${a.hora || '00:00:00'}`);
+      const fechaB = new Date(`${b.fecha}T${b.hora || '00:00:00'}`);
+      return fechaA - fechaB; // Orden ascendente (más próximo primero)
+    });
+
     // 🚀 RESPUESTA FINAL
     const estudianteInfo = examenesCompletos[0]?.estudiante || {
       dni: dni,
