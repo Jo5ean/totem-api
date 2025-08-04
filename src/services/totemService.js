@@ -737,7 +737,6 @@ class TotemService {
     try {
       console.log(`🔍 Consultando inscriptos: examen ${examenId}`);
       
-      // 1. Obtener datos del examen
       const examen = await prisma.examen.findUnique({
         where: { id: examenId },
         include: { examenTotem: true }
@@ -747,11 +746,14 @@ class TotemService {
         throw new Error(`Examen ${examenId} no encontrado`);
       }
       
-      const { materia_codigo, areatema, fecha } = examen;
+      // CORREGIDO: Usar materiaTotem en lugar de materia_codigo
+      const materiaCode = examen.examenTotem?.materiaTotem;
+      const areaTema = examen.examenTotem?.areaTemaTotem;
+      const fecha = examen.fecha;
       
       // Validar que tenemos los datos necesarios
-      if (!materia_codigo) {
-        throw new Error(`Examen ${examenId} no tiene código de materia definido`);
+      if (!materiaCode) {
+        throw new Error(`Examen ${examenId} no tiene código de materia definido en examenTotem.materiaTotem`);
       }
       
       // 2. Construir rango de fechas específico para el examen
@@ -761,7 +763,9 @@ class TotemService {
       const fechaDesdeStr = formatDateDDMMYYYY(fechaExamen);
       
       // 3. Construir URL de UCASAL - CONSULTA MÁS ESPECÍFICA
-      const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materia_codigo}?rendida=false&fechaDesde=${fechaDesdeStr}`;
+      const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materiaCode}?rendida=false&fechaDesde=${fechaDesdeStr}`;
+      
+      console.log(`🔍 Consultando UCASAL: materia=${materiaCode}, areaTema=${areaTema}, fecha=${fechaDesdeStr}`);
       
       // 4. Hacer petición a UCASAL con timeout y retry
       let response;
@@ -778,7 +782,7 @@ class TotemService {
           throw new Error(`API UCASAL no disponible: ${axiosError.message}`);
         }
         if (axiosError.response && axiosError.response.status === 404) {
-          console.log(`⚠️ Materia ${materia_codigo} no encontrada en UCASAL (404)`);
+          console.log(`⚠️ Materia ${materiaCode} no encontrada en UCASAL (404)`);
           return {
             success: true,
             examenId,
@@ -787,7 +791,7 @@ class TotemService {
             estudiantesCreados: 0,
             cantidadInscriptos: 0,
             fechaConsulta: new Date(),
-            warning: `Materia ${materia_codigo} no encontrada en UCASAL`
+            warning: `Materia ${materiaCode} no encontrada en UCASAL`
           };
         }
         throw axiosError;
@@ -801,7 +805,7 @@ class TotemService {
       
       // Validar que la respuesta sea un array
       if (!Array.isArray(actasData)) {
-        console.log(`⚠️ Sin actas para materia ${materia_codigo}`);
+        console.log(`⚠️ Sin actas para materia ${materiaCode}`);
         return {
           success: true,
           examenId,
@@ -818,14 +822,14 @@ class TotemService {
       const actasFiltradas = actasData.filter(acta => {
         // Convertir a string para comparación segura
         const materiaActaStr = String(acta.materia).trim();
-        const materiaExamenStr = String(materia_codigo).trim();
+        const materiaExamenStr = String(materiaCode).trim();
         const coincideMateria = materiaActaStr === materiaExamenStr;
         
         // Filtrar por areaTema si está especificado
         let coincideAreaTema = true;
-        if (areatema && areatema !== 'null' && areatema !== '') {
+        if (areaTema && areaTema !== 'null' && areaTema !== '') {
           const areaActaStr = String(acta.areaTema || '').trim();
-          const areaExamenStr = String(areatema).trim();
+          const areaExamenStr = String(areaTema).trim();
           coincideAreaTema = areaActaStr === areaExamenStr;
         }
         

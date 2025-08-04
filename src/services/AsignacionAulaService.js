@@ -34,9 +34,6 @@ class AsignacionAulaService {
         include: {
           carrera: {
             include: { facultad: true }
-          },
-          _count: {
-            select: { actasExamen: true }
           }
         }
       });
@@ -45,7 +42,9 @@ class AsignacionAulaService {
         throw new Error('Examen no encontrado');
       }
 
-      const cantidadEstudiantes = examen._count.actasExamen;
+      // UNIFICADO: Usar la misma fuente que el resto del sistema
+      // cantidadInscriptos es actualizado por enrollmentSync desde API UCASAL
+      const cantidadEstudiantes = examen.cantidadInscriptos || 0;
       
       // Si ya tiene aula asignada y asignación automática está deshabilitada
       if (examen.aulaId && !examen.asignacionAuto) {
@@ -268,16 +267,12 @@ class AsignacionAulaService {
         aulaId: aulaId,
         fecha: fecha,
         hora: hora
-      },
-      include: {
-        _count: {
-          select: { actasExamen: true }
-        }
       }
     });
 
+    // UNIFICADO: Usar cantidadInscriptos en lugar de _count.actasExamen
     const estudiantesOcupados = examenesSimultaneos.reduce(
-      (total, examen) => total + examen._count.actasExamen,
+      (total, examen) => total + (examen.cantidadInscriptos || 0),
       0
     );
 
