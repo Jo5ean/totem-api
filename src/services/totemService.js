@@ -769,32 +769,50 @@ class TotemService {
       
       // 4. Hacer petición a UCASAL con timeout y retry
       let response;
-      try {
-        response = await axios.get(ucasalUrl, {
-          timeout: 30000, // 30 segundos
-          headers: {
-            'Accept': 'application/json',
-            'User-Agent': 'TOTEM-API/1.0'
+      let retryCount = 0;
+      const maxRetries = 3;
+      
+      while (retryCount < maxRetries) {
+        try {
+          response = await axios.get(ucasalUrl, {
+            timeout: 30000, // 30 segundos
+            headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'TOTEM-API/1.0'
+            }
+          });
+          break; // Salir del loop si la petición es exitosa
+        } catch (axiosError) {
+          retryCount++;
+          
+          if (axiosError.code === 'ENOTFOUND' || axiosError.code === 'ECONNREFUSED') {
+            throw new Error(`API UCASAL no disponible: ${axiosError.message}`);
           }
-        });
-      } catch (axiosError) {
-        if (axiosError.code === 'ENOTFOUND' || axiosError.code === 'ECONNREFUSED') {
-          throw new Error(`API UCASAL no disponible: ${axiosError.message}`);
+          
+          if (axiosError.response && axiosError.response.status === 404) {
+            console.log(`⚠️ Materia ${materiaCode} no encontrada en UCASAL (404)`);
+            return {
+              success: true,
+              examenId,
+              actasEncontradas: 0,
+              estudiantesTotal: 0,
+              estudiantesCreados: 0,
+              cantidadInscriptos: 0,
+              fechaConsulta: new Date(),
+              warning: `Materia ${materiaCode} no encontrada en UCASAL`
+            };
+          }
+          
+          // Si es error 500 y aún hay reintentos
+          if (axiosError.response && axiosError.response.status === 500 && retryCount < maxRetries) {
+            console.log(`⚠️ Error 500 para materia ${materiaCode}, reintento ${retryCount}/${maxRetries} en 2 segundos...`);
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Esperar 2 segundos
+            continue;
+          }
+          
+          // Si se agotaron los reintentos o es otro error
+          throw axiosError;
         }
-        if (axiosError.response && axiosError.response.status === 404) {
-          console.log(`⚠️ Materia ${materiaCode} no encontrada en UCASAL (404)`);
-          return {
-            success: true,
-            examenId,
-            actasEncontradas: 0,
-            estudiantesTotal: 0,
-            estudiantesCreados: 0,
-            cantidadInscriptos: 0,
-            fechaConsulta: new Date(),
-            warning: `Materia ${materiaCode} no encontrada en UCASAL`
-          };
-        }
-        throw axiosError;
       }
       
       if (response.status !== 200) {
@@ -1031,6 +1049,9 @@ class TotemService {
         if (!examenCompleto?.examenTotem?.materiaTotem) {
           continue;
         }
+        
+        // 🚀 AÑADIR DELAY para evitar sobrecarga de API UCASAL
+        await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay
         
         // Consultar inscriptos usando el método existente
         const inscriptosResult = await this.obtenerInscriptosUcasal(examen.id);

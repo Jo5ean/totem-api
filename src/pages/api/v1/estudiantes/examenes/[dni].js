@@ -24,6 +24,34 @@ function getCachedData(key) {
 }
 
 function setCacheData(key, data) {
+  // Verificar si hay exámenes duplicados (por ID) y eliminarlos
+  if (data && data.data && data.data.examenes && Array.isArray(data.data.examenes)) {
+    // Crear un mapa para detectar duplicados por ID
+    const examenesMap = new Map();
+    const examenesUnicos = [];
+    
+    for (const examen of data.data.examenes) {
+      // Usar ID como clave si existe, o una combinación de propiedades como clave alternativa
+      const examenKey = examen.id || 
+                       `${examen.materia?.codigo || ''}_${examen.carrera?.codigo || ''}_${examen.fecha || ''}_${examen.hora || ''}`;
+      
+      if (!examenesMap.has(examenKey)) {
+        examenesMap.set(examenKey, true);
+        examenesUnicos.push(examen);
+      } else {
+        console.log(`🔄 Examen duplicado detectado y eliminado: ${examenKey}`);
+      }
+    }
+    
+    // Actualizar los datos con la lista de exámenes sin duplicados
+    if (data.data.examenes.length !== examenesUnicos.length) {
+      console.log(`🧹 Eliminados ${data.data.examenes.length - examenesUnicos.length} exámenes duplicados`);
+      data.data.examenes = examenesUnicos;
+      data.data.totalExamenes = examenesUnicos.length;
+    }
+  }
+  
+  // Guardar en caché
   cache.set(key, {
     data,
     timestamp: Date.now()
@@ -79,6 +107,7 @@ export default async function handler(req, res) {
     // 🚀 PASO 3: Consulta a API externa UCASAL
     let examenesExternos = [];
     let apiExternaDisponible = true;
+    let apiExternaRespondio = false; // Nueva variable para distinguir entre "no disponible" y "sin exámenes"
     
     try {
       const fechaDesde = new Date().toLocaleDateString('es-AR', {
@@ -106,41 +135,49 @@ export default async function handler(req, res) {
         if (!Array.isArray(examenesExternos)) {
           examenesExternos = [];
         }
-        console.log(`✅ API externa: ${examenesExternos.length} exámenes encontrados`);
+        apiExternaRespondio = true; // ✅ La API respondió correctamente
+        console.log(`✅ API externa respondió: ${examenesExternos.length} exámenes encontrados`);
       } else {
         console.warn(`⚠️ API externa respondió ${response.status}: ${response.statusText}`);
         apiExternaDisponible = false;
       }
     } catch (apiError) {
-      console.warn(`⚠️ Error en API externa (fallback a BD local): ${apiError.message}`);
+      console.warn(`⚠️ Error en API externa: ${apiError.message}`);
       apiExternaDisponible = false;
     }
 
-    // 🚀 PASO 4: Procesar según disponibilidad de datos
+    // 🚀 PASO 4: Procesar según disponibilidad de datos - LÓGICA CORREGIDA
     let resultado;
     
-    if (examenesExternos.length > 0) {
-      // Hay datos externos, procesar normalmente
-      resultado = await procesarExamenesConApiExterna(dni, examenesExternos);
-      console.log(`✅ Procesamiento con API externa: ${resultado.data.examenes.length} exámenes`);
+    if (apiExternaRespondio) {
+      // ✅ La API externa respondió (sea con datos o vacío)
+      if (examenesExternos.length > 0) {
+        // Hay exámenes en la API externa, procesarlos
+        resultado = await procesarExamenesConApiExterna(dni, examenesExternos);
+        console.log(`✅ Procesamiento con API externa: ${resultado.data.examenes.length} exámenes`);
+      } else {
+        // ⚠️ API respondió pero sin exámenes = el estudiante NO TIENE EXÁMENES
+        console.log(`📋 API externa respondió vacío: estudiante ${dni} NO tiene exámenes programados`);
+        return res.status(404).json({
+          success: false,
+          error: 'No se encontraron exámenes programados para este DNI',
+          data: { dni, examenes: [] },
+          apiExternaDisponible: true,
+          message: 'La consulta fue exitosa pero no hay exámenes registrados para este estudiante'
+        });
+      }
     } else if (examenesLocales.length > 0) {
-      // No hay datos externos pero sí locales, usar solo BD local
+      // ❌ API externa NO disponible, pero hay datos locales como FALLBACK
       resultado = await procesarExamenesLocalSolo(dni, examenesLocales);
-      resultado.warning = apiExternaDisponible 
-        ? 'No se encontraron exámenes en el sistema externo, mostrando datos locales disponibles'
-        : 'API externa no disponible, mostrando datos locales disponibles';
+      resultado.warning = 'API externa no disponible, mostrando datos locales disponibles como fallback';
       console.log(`⚠️ Fallback a BD local: ${resultado.data.examenes.length} exámenes`);
     } else {
-      // No hay datos en ningún lado
-      const mensaje = apiExternaDisponible 
-        ? 'No se encontraron exámenes programados para este DNI'
-        : 'API externa no disponible y no hay datos locales para este DNI';
-        
+      // ❌ No hay datos en ningún lado
       return res.status(404).json({
         success: false,
-        error: mensaje,
+        error: 'API externa no disponible y no hay datos locales para este DNI',
         data: { dni, examenes: [] },
-        apiExternaDisponible
+        apiExternaDisponible: false
       });
     }
 
@@ -169,6 +206,12 @@ export default async function handler(req, res) {
 
 async function consultarExamenesLocal(dni) {
   try {
+    // Fecha actual para filtrar exámenes
+    const hoy = new Date();
+    hoy.setHours(0, 0, 0, 0); // Inicio del día actual
+    
+    console.log(`🗓️ Filtrando exámenes a partir de: ${hoy.toISOString()}`);
+    
     // Buscar estudiante y sus exámenes en BD local
     const estudiante = await prisma.estudiante.findUnique({
       where: { dni },
@@ -182,14 +225,28 @@ async function consultarExamenesLocal(dni) {
                 },
                 aula: true,
                 examenTotem: true
+              },
+              // Filtrar solo exámenes con fecha >= hoy
+              where: {
+                fecha: {
+                  gte: hoy
+                }
               }
+            }
+          },
+          // Solo incluir relaciones donde el examen no sea null (debido al filtro de fecha)
+          where: {
+            examen: {
+              isNot: null
             }
           }
         }
       }
     });
 
-    return estudiante?.examenes || [];
+    const examenes = estudiante?.examenes || [];
+    console.log(`🔢 Encontrados ${examenes.length} exámenes vigentes en BD local para DNI ${dni}`);
+    return examenes;
   } catch (error) {
     console.error('Error consultando BD local:', error);
     return [];
@@ -458,7 +515,7 @@ async function procesarExamenesLocalSolo(dni, examenesLocales) {
     data: {
       estudiante: {
         dni: dni,
-        nombre: 'Disponible en base de datos local'
+        nombre: 'Disponible en base de datos local' //ACA DEBERIA IR NOMBRE DEL ALUMNO
       },
       examenes: examenesProcesados,
       totalExamenes: examenesProcesados.length,
