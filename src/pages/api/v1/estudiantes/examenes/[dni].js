@@ -132,6 +132,7 @@ export default async function handler(req, res) {
             nombre: examen.carrera.nombre,
             facultad: examen.carrera.facultad.nombre
           },
+          facultad: examen.carrera.facultad.nombre, // Campo facultad independiente para fácil acceso
           fecha: examen.fecha ? examen.fecha.toISOString().split('T')[0] : examenExterno.fecActa,
           hora: examen.hora ? examen.hora.toTimeString().split(' ')[0] : null,
           aula: examen.aula ? {
@@ -169,6 +170,7 @@ export default async function handler(req, res) {
             codigo: examenExterno.carrera,
             nombre: 'No especificado'
           },
+          facultad: 'No especificada', // Campo facultad independiente
           fecha: examenExterno.fecActa,
           hora: null,
           aula: null,
