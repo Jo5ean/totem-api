@@ -214,11 +214,33 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🚀 ORDENAR EXÁMENES POR FECHA Y HORA (más próximos primero)
+    // 🚀 ORDENAR EXÁMENES POR PROXIMIDAD (hoy primero, luego por horario)
     examenesEncontrados.sort((a, b) => {
+      // Convertir fechas y horas a objetos Date para comparación
       const fechaA = new Date(`${a.fecha}T${a.hora || '00:00:00'}`);
       const fechaB = new Date(`${b.fecha}T${b.hora || '00:00:00'}`);
-      return fechaA - fechaB; // Orden ascendente (más próximo primero)
+      
+      // Obtener fecha actual (solo día, sin hora)
+      const hoy = new Date();
+      hoy.setHours(0, 0, 0, 0);
+      
+      // Fechas de los exámenes (solo día, sin hora)
+      const diaA = new Date(fechaA);
+      diaA.setHours(0, 0, 0, 0);
+      const diaB = new Date(fechaB);
+      diaB.setHours(0, 0, 0, 0);
+      
+      // Calcular diferencia en días
+      const diasA = Math.floor((diaA.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+      const diasB = Math.floor((diaB.getTime() - hoy.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Si son el mismo día, ordenar por hora (más temprano primero)
+      if (diasA === diasB) {
+        return fechaA.getTime() - fechaB.getTime();
+      }
+      
+      // Ordenar por proximidad de día (hoy=0, mañana=1, etc.)
+      return diasA - diasB;
     });
 
     // 🚀 RESPUESTA FINAL
