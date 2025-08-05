@@ -4,3 +4,8 @@ node_modules/
 *.log
 dist/
 build/
+
+# Archivos temporales
+*.json
+!package*.json
+!railway.json
