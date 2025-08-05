@@ -92,64 +92,61 @@ export default async function handler(req, res) {
         nombreMateria: examenExterno.nombreMateria
       });
 
-      // Buscar match en tabla examenes_totem para obtener datos completos
-      const matchTotem = await prisma.examenTotem.findFirst({
+      // 🔥 CONSULTA CORRECTA: Buscar directamente en tabla examenes con joins completos
+      const examenCompleto = await prisma.examen.findFirst({
         where: {
-          AND: [
-            { materiaTotem: examenExterno.materia },
-            { carreraTotem: examenExterno.carrera },
-            ...(examenExterno.areaTema ? [{ areaTemaTotem: examenExterno.areaTema }] : [])
-          ]
+          materia_codigo: examenExterno.materia,
+          carrera: {
+            codigo: examenExterno.carrera
+          },
+          // Opcional: también match por areaTema si existe
+          ...(examenExterno.areaTema ? { areatema: examenExterno.areaTema } : {})
         },
         include: {
-          examen: {
+          carrera: {
             include: {
-              carrera: {
-                include: {
-                  facultad: true
-                }
-              },
-              aula: true
+              facultad: true
             }
-          }
+          },
+          aula: true,
+          facultad: true
         }
       });
 
-      if (matchTotem && matchTotem.examen) {
-        // ✅ Match encontrado - datos completos
-        const examen = matchTotem.examen;
+      if (examenCompleto) {
+        // ✅ Datos encontrados en tabla principal - INFORMACIÓN COMPLETA
+        console.log(`✅ Examen encontrado en BD: ${examenCompleto.nombreMateria} - ${examenCompleto.carrera.nombre}`);
         
         examenesCompletos.push({
-          id: examen.id,
+          id: examenCompleto.id,
           materia: {
             codigo: examenExterno.materia,
             nombre: examenExterno.nombreMateria,
-            nombreCorto: examen.nombreMateria,
+            nombreCorto: examenCompleto.nombreMateria,
             areaTema: examenExterno.areaTema
           },
           carrera: {
             codigo: examenExterno.carrera,
-            nombre: examen.carrera.nombre,
-            facultad: examen.carrera.facultad.nombre
+            nombre: examenCompleto.carrera.nombre,
+            facultad: examenCompleto.carrera.facultad.nombre
           },
-          facultad: examen.carrera.facultad.nombre, // Campo facultad independiente para fácil acceso
-          fecha: examen.fecha ? examen.fecha.toISOString().split('T')[0] : examenExterno.fecActa,
-          hora: examen.hora ? examen.hora.toTimeString().split(' ')[0] : null,
-          aula: examen.aula ? {
-            id: examen.aula.id,
-            nombre: examen.aula.nombre,
-            capacidad: examen.aula.capacidad,
-            sede: examen.aula.sede
-          } : null,
-          tipoExamen: examen.tipoExamen || 'No especificado',
-          modalidad: examen.modalidadExamen || 'presencial',
-          observaciones: examen.observaciones,
-          materialPermitido: examen.materialPermitido,
-          requierePc: examen.requierePc || false,
-          docente: matchTotem.docenteTotem,
-          monitoreo: matchTotem.monitoreoTotem,
-          control: matchTotem.controlTotem,
-          url: matchTotem.urlTotem,
+          facultad: examenCompleto.carrera.facultad.nombre,
+          fecha: examenCompleto.fecha ? examenCompleto.fecha.toISOString().split('T')[0] : examenExterno.fecActa,
+          hora: examenCompleto.hora ? examenCompleto.hora.toTimeString().split(' ')[0] : 'Hora no especificada',
+          aula: examenCompleto.aula ? {
+            id: examenCompleto.aula.id,
+            nombre: examenCompleto.aula.nombre,
+            capacidad: examenCompleto.aula.capacidad,
+            sede: examenCompleto.aula.sede
+          } : 'Sin asignar',
+          tipoExamen: examenCompleto.tipoExamen || 'Final',
+          modalidad: examenCompleto.modalidadExamen || 'Presencial',
+          observaciones: examenCompleto.observaciones || 'Sin observaciones',
+          materialPermitido: examenCompleto.materialPermitido || 'Consultar con cátedra',
+          requierePc: examenCompleto.requierePc || false,
+          docente: examenCompleto.docente || 'Por confirmar',
+          monitoreo: examenCompleto.monitoreo || 'Por asignar',
+          control: examenCompleto.control_cargo || 'Por asignar',
           estudiante: {
             dni: examenExterno.ndocu,
             nombre: examenExterno.apen,
@@ -159,7 +156,27 @@ export default async function handler(req, res) {
           }
         });
       } else {
-        // ⚠️ No match - solo datos de API externa
+        // ⚠️ No encontrado en BD local - Buscar carrera por código para al menos tener facultad
+        console.log(`⚠️ Examen no encontrado en BD local para materia ${examenExterno.materia}, carrera ${examenExterno.carrera}`);
+        
+        // Buscar carrera por código para obtener facultad correcta
+        const carreraInfo = await prisma.carrera.findFirst({
+          where: {
+            codigo: examenExterno.carrera
+          },
+          include: {
+            facultad: true
+          }
+        });
+        
+        const carreraData = carreraInfo ? {
+          nombre: carreraInfo.nombre,
+          facultad: carreraInfo.facultad.nombre
+        } : {
+          nombre: `Carrera código ${examenExterno.carrera}`,
+          facultad: 'Facultad no identificada'
+        };
+        
         examenesCompletos.push({
           materia: {
             codigo: examenExterno.materia,
@@ -168,15 +185,15 @@ export default async function handler(req, res) {
           },
           carrera: {
             codigo: examenExterno.carrera,
-            nombre: 'No especificado'
+            nombre: carreraData.nombre
           },
-          facultad: 'No especificada', // Campo facultad independiente
+          facultad: carreraData.facultad,
           fecha: examenExterno.fecActa,
-          hora: null,
-          aula: null,
-          tipoExamen: 'No especificado',
-          modalidad: 'presencial',
-          observaciones: 'Examen registrado solo en sistema externo',
+          hora: 'Hora no especificada',
+          aula: 'Sin asignar',
+          tipoExamen: 'Final',
+          modalidad: 'Presencial',
+          observaciones: 'Examen pendiente de asignación de aula y horario',
           estudiante: {
             dni: examenExterno.ndocu,
             nombre: examenExterno.apen,
