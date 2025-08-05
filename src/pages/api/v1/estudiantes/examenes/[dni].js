@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     }
 
     // 🚀 PROCESAR EXÁMENES ENCONTRADOS - BUSCAR DATOS COMPLETOS EN BD LOCAL
-    const examenesCompletos = [];
+    const examenesEncontrados = [];
     
     for (const examenExterno of examenesExternos) {
       console.log('🔍 Procesando examen externo:', {
@@ -92,8 +92,8 @@ export default async function handler(req, res) {
         nombreMateria: examenExterno.nombreMateria
       });
 
-      // 🔥 CONSULTA CORRECTA: Buscar directamente en tabla examenes con joins completos
-      const examenCompleto = await prisma.examen.findFirst({
+      // 🔥 CONSULTA CORREGIDA: Buscar TODOS los exámenes de esa materia/carrera
+      const examenesCompletos = await prisma.examen.findMany({
         where: {
           materia_codigo: examenExterno.materia,
           carrera: {
@@ -110,51 +110,60 @@ export default async function handler(req, res) {
           },
           aula: true,
           facultad: true
-        }
+        },
+        orderBy: [
+          { fecha: 'asc' },
+          { hora: 'asc' }
+        ]
       });
 
-      if (examenCompleto) {
+      if (examenesCompletos.length > 0) {
         // ✅ Datos encontrados en tabla principal - INFORMACIÓN COMPLETA
-        console.log(`✅ Examen encontrado en BD: ${examenCompleto.nombreMateria} - ${examenCompleto.carrera.nombre}`);
+        console.log(`✅ ${examenesCompletos.length} examen(es) encontrado(s) en BD para materia ${examenExterno.materia}`);
         
-        examenesCompletos.push({
-          id: examenCompleto.id,
-          materia: {
-            codigo: examenExterno.materia,
-            nombre: examenExterno.nombreMateria,
-            nombreCorto: examenCompleto.nombreMateria,
-            areaTema: examenExterno.areaTema
-          },
-          carrera: {
-            codigo: examenExterno.carrera,
-            nombre: examenCompleto.carrera.nombre,
-            facultad: examenCompleto.carrera.facultad.nombre
-          },
-          facultad: examenCompleto.carrera.facultad.nombre,
-          fecha: examenCompleto.fecha ? examenCompleto.fecha.toISOString().split('T')[0] : examenExterno.fecActa,
-          hora: examenCompleto.hora ? examenCompleto.hora.toTimeString().split(' ')[0] : 'Hora no especificada',
-          aula: examenCompleto.aula ? {
-            id: examenCompleto.aula.id,
-            nombre: examenCompleto.aula.nombre,
-            capacidad: examenCompleto.aula.capacidad,
-            sede: examenCompleto.aula.sede
-          } : 'Sin asignar',
-          tipoExamen: examenCompleto.tipoExamen || 'Final',
-          modalidad: examenCompleto.modalidadExamen || 'Presencial',
-          observaciones: examenCompleto.observaciones || 'Sin observaciones',
-          materialPermitido: examenCompleto.materialPermitido || 'Consultar con cátedra',
-          requierePc: examenCompleto.requierePc || false,
-          docente: examenCompleto.docente || 'Por confirmar',
-          monitoreo: examenCompleto.monitoreo || 'Por asignar',
-          control: examenCompleto.control_cargo || 'Por asignar',
-          estudiante: {
-            dni: examenExterno.ndocu,
-            nombre: examenExterno.apen,
-            lugar: examenExterno.nombreLugar,
-            sector: examenExterno.nombreSector,
-            modo: examenExterno.nombreModo
-          }
-        });
+        // Procesar cada examen encontrado en la BD local
+        for (const examenCompleto of examenesCompletos) {
+          console.log(`   ✅ Examen ID ${examenCompleto.id}: ${examenCompleto.nombreMateria} - ${examenCompleto.hora?.toTimeString().split(' ')[0] || 'Sin hora'}`);
+          
+          examenesEncontrados.push({
+            id: examenCompleto.id,
+            materia: {
+              codigo: examenExterno.materia,
+              nombre: examenExterno.nombreMateria,
+              nombreCorto: examenCompleto.nombreMateria,
+              areaTema: examenExterno.areaTema
+            },
+            carrera: {
+              codigo: examenExterno.carrera,
+              nombre: examenCompleto.carrera.nombre,
+              facultad: examenCompleto.carrera.facultad.nombre
+            },
+            facultad: examenCompleto.carrera.facultad.nombre,
+            fecha: examenCompleto.fecha ? examenCompleto.fecha.toISOString().split('T')[0] : examenExterno.fecActa,
+            hora: examenCompleto.hora ? examenCompleto.hora.toTimeString().split(' ')[0] : 'Hora no especificada',
+            aula: examenCompleto.aula ? {
+              id: examenCompleto.aula.id,
+              nombre: examenCompleto.aula.nombre,
+              capacidad: examenCompleto.aula.capacidad,
+              sede: examenCompleto.aula.sede
+            } : 'Sin asignar',
+            tipoExamen: examenCompleto.tipoExamen || 'Final',
+            modalidad: examenCompleto.modalidadExamen || 'Presencial',
+            observaciones: examenCompleto.observaciones || 'Sin observaciones',
+            materialPermitido: examenCompleto.materialPermitido || 'Consultar con cátedra',
+            requierePc: examenCompleto.requierePc || false,
+            docente: examenCompleto.docente || 'Por confirmar',
+            monitoreo: examenCompleto.monitoreo || 'Por asignar',
+            control: examenCompleto.control_cargo || 'Por asignar',
+            estudiante: {
+              dni: examenExterno.ndocu,
+              nombre: examenExterno.apen,
+              lugar: examenExterno.nombreLugar,
+              sector: examenExterno.nombreSector,
+              modo: examenExterno.nombreModo
+            }
+          });
+        }
       } else {
         // ⚠️ No encontrado en BD local - Buscar carrera por código para al menos tener facultad
         console.log(`⚠️ Examen no encontrado en BD local para materia ${examenExterno.materia}, carrera ${examenExterno.carrera}`);
@@ -177,7 +186,7 @@ export default async function handler(req, res) {
           facultad: 'Facultad no identificada'
         };
         
-        examenesCompletos.push({
+        examenesEncontrados.push({
           materia: {
             codigo: examenExterno.materia,
             nombre: examenExterno.nombreMateria,
@@ -206,14 +215,14 @@ export default async function handler(req, res) {
     }
 
     // 🚀 ORDENAR EXÁMENES POR FECHA Y HORA (más próximos primero)
-    examenesCompletos.sort((a, b) => {
+    examenesEncontrados.sort((a, b) => {
       const fechaA = new Date(`${a.fecha}T${a.hora || '00:00:00'}`);
       const fechaB = new Date(`${b.fecha}T${b.hora || '00:00:00'}`);
       return fechaA - fechaB; // Orden ascendente (más próximo primero)
     });
 
     // 🚀 RESPUESTA FINAL
-    const estudianteInfo = examenesCompletos[0]?.estudiante || {
+    const estudianteInfo = examenesEncontrados[0]?.estudiante || {
       dni: dni,
       nombre: 'No disponible'
     };
@@ -222,8 +231,8 @@ export default async function handler(req, res) {
       success: true,
       data: {
         estudiante: estudianteInfo,
-        examenes: examenesCompletos,
-        totalExamenes: examenesCompletos.length
+        examenes: examenesEncontrados,
+        totalExamenes: examenesEncontrados.length
       },
       consultadoEn: new Date().toISOString(),
       fuente: 'api_externa_con_datos_locales'
