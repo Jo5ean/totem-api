@@ -61,6 +61,7 @@ async function handler(req, res) {
               facultad: true
             }
           },
+          facultad: true,
           aula: true,
           examenTotem: {
             select: {
@@ -116,11 +117,15 @@ async function handler(req, res) {
           nombre: examen.carrera.nombre,
           codigo: examen.carrera.codigo
         },
-        facultad: {
+        facultad: examen.facultad ? {
           id: examen.facultad.id,
           nombre: examen.facultad.nombre,
           codigo: examen.facultad.codigo
-        },
+        } : examen.carrera?.facultad ? {
+          id: examen.carrera.facultad.id,
+          nombre: examen.carrera.facultad.nombre,
+          codigo: examen.carrera.facultad.codigo
+        } : null,
         
         // Información de aula
         aula: examen.aula ? {

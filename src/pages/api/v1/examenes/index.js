@@ -12,6 +12,8 @@ export default async function handler(req, res) {
     const {
       facultadId,
       carreraId,
+      gid,
+      activo,
       fechaDesde,
       fechaHasta,
       soloSinAula,
@@ -29,6 +31,19 @@ export default async function handler(req, res) {
 
     if (carreraId) {
       where.carreraId = parseInt(carreraId);
+    }
+
+    if (gid) {
+      where.examenTotem = {
+        gid: gid.toString()
+      };
+    }
+
+    // Por defecto, solo exámenes activos. Se puede override con ?activo=true|false
+    if (activo !== undefined) {
+      where.activo = activo === 'true';
+    } else {
+      where.activo = true;
     }
 
     if (fechaDesde) {
@@ -90,6 +105,8 @@ export default async function handler(req, res) {
           },
           examenTotem: {
             select: {
+              gid: true,
+              sheetName: true,
               dataOriginal: true
             }
           },
@@ -137,6 +154,8 @@ export default async function handler(req, res) {
         filtrosAplicados: {
           facultadId: facultadId ? parseInt(facultadId) : null,
           carreraId: carreraId ? parseInt(carreraId) : null,
+          gid: gid ? gid.toString() : null,
+          activo: activo !== undefined ? activo === 'true' : true,
           fechaDesde,
           fechaHasta,
           soloSinAula: soloSinAula === 'true',

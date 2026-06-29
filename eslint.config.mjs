@@ -22,7 +22,7 @@ const eslintConfig = [
   },
   {
     rules: {
-      // Relajar reglas para build de Railway
+      // Relajar reglas para build
       "prefer-const": "warn",
       "no-unused-vars": "warn",
       "@next/next/no-img-element": "warn",

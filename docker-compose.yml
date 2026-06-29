@@ -1,0 +1,43 @@
+services:
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: totem_db
+      MYSQL_USER: totem
+      MYSQL_PASSWORD: totem_password
+      MYSQL_ROOT_PASSWORD: root_password
+    volumes:
+      - totem_mysql_data:/var/lib/mysql
+    networks:
+      - totem_api_net
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://totem:totem_password@db:3306/totem_db
+      GOOGLE_SHEET_API_URL: ${GOOGLE_SHEET_API_URL}
+      ALLOW_DB_RESET: "true"
+      ADMIN_TOKEN: "RjAtByAeBsm6eJ8qyczE9kkh1tERMafSp866yLoDavUJUko7Aqf8VYfF2RCmLmhjKIbTwTQhGhDHSv5LqsOXqeAhvtROX2b1quom92o2gojcHOrHPBR8VFTYaAsEFpQTW58aqIUTlMYwQv8HvjhC18CbRs0xlbHaPozuSK5MeMbzKM3MoxOmfeeKwfIbi54Z4MFOcE4c"
+      PORT: 3000
+    ports:
+      - "3001:3000"
+    networks:
+      - totem_api_net
+
+volumes:
+  totem_mysql_data:
+
+networks:
+  totem_api_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.251.0.0/24

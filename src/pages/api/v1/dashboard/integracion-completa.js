@@ -196,7 +196,7 @@ export default async function handler(req, res) {
       metadata: {
         generadoEn: new Date().toISOString(),
         rangoAnalisis: '7 días próximos',
-        sistemaExterno: 'sistemasweb-desa.ucasal.edu.ar'
+        sistemaExterno: 'backprod.ucasal.edu.ar'
       }
     });
 

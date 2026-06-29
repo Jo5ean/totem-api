@@ -1,4 +1,4 @@
-import TotemService from '../../../../services/totemService.js';
+import TotemService, { isSyncInProgress, acquireSyncLock, releaseSyncLock } from '../../../../services/totemService.js';
 import { withCors } from '../../../../lib/cors.js';
 
 const totemService = new TotemService();
@@ -12,36 +12,45 @@ async function handler(req, res) {
     });
   }
 
+  // Adquirir lock síncronamente — antes de cualquier await
+  if (!acquireSyncLock()) {
+    return res.status(409).json({
+      success: false,
+      alreadyRunning: true,
+      message: 'Ya hay una sincronización en curso. Por favor esperá a que termine antes de iniciar otra.'
+    });
+  }
+
   try {
-    console.log('Iniciando sincronización TOTEM centralizada...');
-    
-    // 🚀 INICIAR PROCESO EN BACKGROUND PARA EVITAR TIMEOUT
-    const syncPromise = totemService.syncTotemData();
-    
-    // ⚡ RESPUESTA INMEDIATA SIN ESPERAR
+    console.log('Iniciando sincronización TOTEM...');
+
+    const gid = req.query?.gid ?? req.body?.gid;
+
+    // Respuesta inmediata
     res.status(202).json({
       success: true,
       message: 'Sincronización TOTEM iniciada correctamente',
       status: 'processing',
-      note: 'El proceso continúa ejecutándose en segundo plano. Consulta los logs de Railway para ver el progreso.',
+      gid: gid ?? null,
       timestamp: new Date().toISOString()
     });
-    
-    // 🔄 CONTINUAR PROCESAMIENTO EN BACKGROUND
-    syncPromise
+
+    // Procesar en background
+    totemService.syncTotemData({ gid })
       .then(result => {
-        console.log('✅ Sincronización TOTEM completada exitosamente:', {
-          examensCreated: result.data?.examensCreated || 0,
-          examensUpdated: result.data?.examensUpdated || 0,
+        console.log('✅ Sync TOTEM completada:', {
+          created: result.data?.examensCreated || 0,
+          updated: result.data?.examensUpdated || 0,
           duration: result.duration,
-          timestamp: result.timestamp
         });
       })
       .catch(error => {
-        console.error('❌ Error en sincronización TOTEM (background):', error.message);
-      });
-    
+        console.error('❌ Error en sync TOTEM (background):', error.message);
+      })
+      .finally(() => releaseSyncLock());
+
   } catch (error) {
+    releaseSyncLock();
     console.error('Error iniciando sincronización TOTEM:', error);
     return res.status(500).json({
       success: false,

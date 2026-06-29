@@ -22,9 +22,7 @@ export default async function handler(req, res) {
     const examenId = parseInt(id);
     const { 
       modalidadExamen, 
-      requierePc, 
-      asignacionAuto, 
-      criterioAsignacion 
+      requierePc
     } = req.body;
 
     // Verificar que el examen existe
@@ -55,26 +53,6 @@ export default async function handler(req, res) {
     if (requierePc !== undefined) {
       datosActualizacion.requierePc = requierePc;
     }
-    
-    if (asignacionAuto !== undefined) {
-      datosActualizacion.asignacionAuto = asignacionAuto;
-    }
-    
-    if (criterioAsignacion !== undefined) {
-      datosActualizacion.criterioAsignacion = criterioAsignacion;
-    }
-
-    // Si se cambia a examen informático, quitar aula actual si no es compatible
-    if (requierePc === true && examen.aula && 
-        !['Notebooks', 'Laboratorio Informático'].includes(examen.aula.nombre)) {
-      datosActualizacion.aulaId = null;
-      datosActualizacion.criterioAsignacion = null;
-    }
-
-    // Si se desactiva asignación automática, mantener el aula actual
-    if (asignacionAuto === false && examen.aulaId) {
-      datosActualizacion.criterioAsignacion = 'MANUAL';
-    }
 
     const examenActualizado = await prisma.examen.update({
       where: { id: examenId },
@@ -93,17 +71,8 @@ export default async function handler(req, res) {
     // Información para el response
     let recomendaciones = [];
     
-    if (requierePc === true) {
-      const cantidadEstudiantes = examenActualizado._count.actasExamen;
-      if (cantidadEstudiantes <= 26) {
-        recomendaciones.push('Se recomienda asignar Notebooks (26 disponibles)');
-      } else {
-        recomendaciones.push('Se requiere Laboratorio Informático (capacidad 34)');
-      }
-    }
-
-    if (asignacionAuto === true && !examenActualizado.aulaId) {
-      recomendaciones.push('Ejecutar asignación automática para obtener aula');
+    if (requierePc === true && !examenActualizado.aulaId) {
+      recomendaciones.push('Asignar manualmente un aula con soporte de PC para este examen');
     }
 
     return res.status(200).json({
@@ -121,8 +90,7 @@ export default async function handler(req, res) {
       recomendaciones,
       estadisticas: {
         cantidadEstudiantes: examenActualizado._count.actasExamen,
-        tieneAula: !!examenActualizado.aulaId,
-        esAutomatico: examenActualizado.asignacionAuto
+        tieneAula: !!examenActualizado.aulaId
       }
     });
 

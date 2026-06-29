@@ -19,8 +19,10 @@ import prisma from '../src/lib/db.js';
 
 const AULAS_CORRECTAS = [
   { nombre: 'Aula 4', capacidad: 72, ubicacion: 'Edificio Principal' },
+  { nombre: 'Aula 7', capacidad: 72, ubicacion: 'Edificio Principal' },
   { nombre: 'Aula 8', capacidad: 71, ubicacion: 'Edificio Principal' },
   { nombre: 'Aula 12', capacidad: 69, ubicacion: 'Edificio Principal' },
+  { nombre: 'Aula 34', capacidad: 72, ubicacion: 'Edificio Principal' },
   { nombre: 'Laboratorio Informático', capacidad: 34, ubicacion: 'Laboratorio de Computación' }
 ];
 
@@ -165,11 +167,7 @@ async function paso3_ConfigurarAulas() {
     }
   }
   
-  console.log(`📊 Total aulas: ${creadas} (debe ser exactamente 4)`);
-  
-  if (creadas !== 4) {
-    throw new Error(`Error: Se esperaban 4 aulas, se crearon ${creadas}`);
-  }
+  console.log(`📊 Total aulas configuradas: ${creadas}`);
 }
 
 // ==========================================

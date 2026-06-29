@@ -1,7 +1,8 @@
 import { validateMethod } from '../../../../middleware/validation.js';
 import { getAllFacultades, createFacultad } from '../../../../controllers/facultadController.js';
+import { withCors } from '../../../../lib/cors.js';
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   // Validar método
   const methodValidator = validateMethod(['GET', 'POST']);
   const methodError = methodValidator(req, res);
@@ -23,4 +24,6 @@ export default async function handler(req, res) {
       message: error.message
     });
   }
-} 
+}
+
+export default withCors(handler);

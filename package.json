@@ -13,27 +13,25 @@
     "db:generate": "npx prisma generate",
     "db:push": "npx prisma db push",
     "db:studio": "npx prisma studio",
-    "railway:setup": "npm run db:push && node scripts/totem-master.js",
-    "railway:deploy": "npm run build && npm run db:generate",
+    "setup": "npm run db:push && node scripts/totem-master.js",
     "clean:cache": "rm -rf node_modules/.cache .next/cache || true",
     "postinstall": "npm run db:generate"
   },
   "dependencies": {
     "@prisma/client": "^6.9.0",
     "axios": "^1.7.7",
-    "cors": "^2.8.5",
-    "csv-parser": "^3.2.0",
     "dotenv": "^16.5.0",
-    "express": "^4.18.2",
-    "googleapis": "^144.0.0",
     "mysql2": "^3.14.1",
     "next": "^15.0.3",
-    "prisma": "^6.9.0",
+    "node-cron": "^3.0.3",
+    "prisma": "^6.9.0"
+  },
+  "devDependencies": {
     "@types/node": "^22.7.9",
+    "@types/react": "19.2.7",
     "eslint": "^9.13.0",
     "eslint-config-next": "^15.0.3"
   },
-  "devDependencies": {},
   "keywords": [
     "api",
     "rest",

@@ -57,12 +57,12 @@ export default withCors(async function handler(req, res) {
       cors: {
         enabled: true,
         origins: [
-          'http://localhost:3000', 
-          'https://wwwold.ucasal.edu.ar', 
-          'https://ucasal.edu.ar', 
-          'https://*.railway.app'
+          'http://localhost:3000',
+          'http://172.16.2.80:3002',
+          'http://172.16.2.80:3003',
+          'https://ucasal.edu.ar'
         ],
-        backofficeUrl: 'https://wwwold.ucasal.edu.ar/proyectos-innovalab/backoffice/'
+        backofficeUrl: process.env.BACKOFFICE_URL || `http://172.16.2.80:3002`
       }
     });
   } catch (error) {
@@ -74,7 +74,5 @@ export default withCors(async function handler(req, res) {
       error: error.message,
       timestamp: new Date().toISOString()
     });
-  } finally {
-    await prisma.$disconnect();
   }
-}); 
+});

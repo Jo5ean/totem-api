@@ -1,35 +1,260 @@
 import prisma from '../lib/db.js';
-import SheetBestService from './sheetBestService.js';
+import GoogleSheetService from './googleSheetService.js';
 import UcasalMappingService from './ucasalMappingService.js';
-import { formatDateDDMMYYYY, getNextYearJanuaryFirst } from '../lib/helpers.js';
+import { formatDateDDMMYYYY } from '../lib/helpers.js';
 import axios from 'axios';
+import { filtrarActasPorIdentidad } from './actaExternaService.js';
 
-// ID del Google Sheet del TOTEM centralizado
-const TOTEM_SHEET_ID = '12_tx2DXfebO-5SjRTiRTg3xebVR1x-5xJ_BFY7EPaS8';
+// Helper functions for extractTotemRowData (moved outside class to avoid bundler issues)
+function pickField(obj, keys) {
+  for (const k of keys) {
+    if (obj && Object.prototype.hasOwnProperty.call(obj, k)) return obj[k];
+  }
+  return undefined;
+}
+
+function toStr(v) {
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  return s === '' ? null : s;
+}
+
+function toDate(v) {
+  if (!v) return null;
+  const d = v instanceof Date ? v : new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function toTime(v) {
+  if (!v) return null;
+  // Google Sheets serial number (0-1 range = fraction of day)
+  if (typeof v === 'number' && v >= 0 && v < 1) {
+    const totalMinutes = Math.round(v * 24 * 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
+  }
+  // Google Apps Script 1899-12-30 epoch date (e.g. "1899-12-30T18:16:48.000Z")
+  // These carry a +4:16:48 offset from Argentina's historical timezone (pre-1920).
+  // Subtract 4h16m48s (15408 seconds) to recover the real local time, then round.
+  if (typeof v === 'string' && v.includes('1899-12-30')) {
+    const d = new Date(v);
+    if (!Number.isNaN(d.getTime())) {
+      const correctedMs = d.getTime() - 15408000; // 4h16m48s in ms
+      const corrected = new Date(correctedMs);
+      const h = corrected.getUTCHours();
+      const m = corrected.getUTCMinutes();
+      const roundedH = m >= 30 ? (h + 1) % 24 : h;
+      return new Date(Date.UTC(1970, 0, 1, roundedH, 0, 0));
+    }
+  }
+  // String like "18:00", "18:00:00", "6:00 PM"
+  if (typeof v === 'string') {
+    const match = v.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+    if (match) {
+      const h = parseInt(match[1], 10);
+      const m = parseInt(match[2], 10);
+      return new Date(Date.UTC(1970, 0, 1, h, m, 0));
+    }
+  }
+  // Date object — extract UTC hours, round to nearest hour
+  const d = v instanceof Date ? v : new Date(v);
+  if (Number.isNaN(d.getTime())) return null;
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const roundedH = m >= 30 ? (h + 1) % 24 : h;
+  return new Date(Date.UTC(1970, 0, 1, roundedH, 0, 0));
+}
+
+function extractTotemRowData(row) {
+  const sector = toStr(pickField(row, ['SECTOR', 'Sector', 'sector']));
+  const carrera = toStr(pickField(row, ['CARRERA', 'Carrera', 'carrera']));
+  const materia = toStr(pickField(row, ['MATERIA', 'Materia', 'materia']));
+  const areaTema = toStr(pickField(row, ['AREATEMA', 'AREA_TEMA', 'AreaTema', 'areaTema', 'area_tema']));
+  const modo = toStr(pickField(row, ['MODO', 'Modo', 'modo']));
+  const nombreCorto = toStr(pickField(row, ['NOMBRE CORTO', 'NOMBRE_CORTO', 'Nombre Corto', 'nombreCorto']));
+  const fecha = toDate(pickField(row, ['FECHA', 'Fecha', 'fecha']));
+  const hora = toTime(pickField(row, ['Hora', 'HORA', 'hora']));
+  const url = toStr(pickField(row, ['URL', 'Url', 'url']));
+  const catedra = toStr(pickField(row, ['CÁTEDRA', 'CATEDRA', 'Catedra', 'catedra']));
+  const docente = toStr(pickField(row, ['Docente', 'DOCENTE', 'docente']));
+  const monitoreo = toStr(pickField(row, ['Monitoreo', 'MONITOREO', 'monitoreo']));
+  const control = toStr(pickField(row, ['Control a cargo de:', 'CONTROL A CARGO DE:', 'Control', 'control']));
+  const tipoExamen = toStr(pickField(row, ['Tipo Examen', 'TIPO EXAMEN', 'tipoExamen']));
+  const materialPermitido = toStr(pickField(row, ['Material Permitido', 'MATERIAL PERMITIDO', 'materialPermitido']));
+  const observacionesDo = toStr(pickField(row, ['Observaciones DO', 'OBSERVACIONES DO', 'observacionesDo']));
+  const observacionesFacultad = toStr(pickField(row, ['Observaciones Facultad', 'OBSERVACIONES FACULTAD', 'observacionesFacultad']));
+  const comentarios = toStr(pickField(row, ['Comentarios', 'COMENTARIOS', 'comentarios']));
+
+  const observaciones = [observacionesDo, observacionesFacultad, comentarios].filter(Boolean).join(' | ') || null;
+
+  return {
+    sector,
+    carrera,
+    materia,
+    areaTema,
+    modo,
+    nombreCorto,
+    fecha,
+    hora,
+    url,
+    catedra,
+    docente,
+    monitoreo,
+    control,
+    tipoExamen,
+    materialPermitido,
+    observaciones
+  };
+}
+
+// Módulo-level lock para prevenir syncs concurrentes
+// (Next.js mantiene el módulo en memoria entre requests en el mismo proceso)
+let _syncInProgress = false;
+let _syncStartedAt  = null;
+const SYNC_TIMEOUT_MS = 10 * 60 * 1000; // 10 min safety reset
+
+export function isSyncInProgress() {
+  // Auto-reset por si el proceso murió sin liberar el lock
+  if (_syncInProgress && _syncStartedAt && (Date.now() - _syncStartedAt) > SYNC_TIMEOUT_MS) {
+    console.warn('⚠️  Sync lock vencido (>10 min), reseteando...');
+    _syncInProgress = false;
+    _syncStartedAt  = null;
+  }
+  return _syncInProgress;
+}
+
+export function acquireSyncLock() {
+  if (_syncInProgress) return false;
+  _syncInProgress = true;
+  _syncStartedAt  = Date.now();
+  return true;
+}
+
+export function releaseSyncLock() {
+  _syncInProgress = false;
+  _syncStartedAt  = null;
+}
 
 class TotemService {
   constructor() {
-    this.sheetBestService = new SheetBestService();
+    this.googleSheetService = new GoogleSheetService();
     this.ucasalMappingService = new UcasalMappingService();
   }
 
-  async syncTotemData() {
+  async mapSectorToFacultad(sector) {
+    const sectorStr = sector?.toString();
+    if (!sectorStr) return null;
+
+    const mapping = await prisma.sectorFacultad.findFirst({
+      where: {
+        sector: sectorStr,
+        activo: true
+      },
+      include: {
+        facultad: true
+      }
+    });
+
+    return mapping?.facultad ?? null;
+  }
+
+  async mapCarreraTotem(codigoTotem, facultadId) {
+    const codigoStr = codigoTotem?.toString();
+    if (!codigoStr || !facultadId) return null;
+
+    const existing = await prisma.carreraTotem.findUnique({
+      where: { codigoTotem: codigoStr },
+      include: { carrera: true }
+    });
+
+    if (existing?.esMapeada && existing?.carrera && existing.carrera.facultadId === facultadId) {
+      return existing.carrera;
+    }
+
+    const carreraCodigo = codigoStr.substring(0, 10);
+    let carrera = await prisma.carrera.findFirst({
+      where: {
+        codigo: carreraCodigo,
+        facultadId
+      }
+    });
+
+    if (!carrera) {
+      carrera = await prisma.carrera.create({
+        data: {
+          nombre: `Carrera ${codigoStr}`,
+          codigo: carreraCodigo,
+          facultadId,
+          activa: true
+        }
+      });
+    }
+
+    await prisma.carreraTotem.upsert({
+      where: { codigoTotem: codigoStr },
+      update: {
+        carreraId: carrera.id,
+        esMapeada: true,
+        activo: true
+      },
+      create: {
+        codigoTotem: codigoStr,
+        carreraId: carrera.id,
+        esMapeada: true,
+        nombreTotem: `Carrera ${codigoStr}`,
+        activo: true
+      }
+    });
+
+    return carrera;
+  }
+
+  async createExamenFromTotem(totemData, carreraId, facultadId, aulaId = null) {
+    const createData = {
+      carreraId,
+      facultadId,
+      ...(aulaId ? { aulaId } : {}),
+      materia_codigo: totemData.materia?.toString() || 'SIN_CODIGO',
+      nombreMateria: totemData.nombreCorto || totemData.materia || 'Sin nombre',
+      areatema: totemData.areaTema,
+      fecha: totemData.fecha,
+      hora: totemData.hora,
+      tipoExamen: totemData.tipoExamen,
+      modalidadExamen: totemData.tipoExamen?.includes('Virtual') ? 'virtual' : 'presencial',
+      catedra: totemData.catedra,
+      docente: totemData.docente,
+      monitoreo: totemData.monitoreo,
+      control_cargo: totemData.control,
+      materialPermitido: totemData.materialPermitido,
+      observaciones: totemData.observaciones,
+      url: totemData.url,
+      fechaUltConsulta: new Date(),
+      activo: true
+    };
+
+    return await prisma.examen.create({
+      data: createData
+    });
+  }
+
+  async syncTotemData(options = {}) {
     const startTime = Date.now();
-    
+
     try {
-      console.log('🚀 Iniciando sincronización TOTEM con Sheet.best API...');
+      console.log('🚀 Iniciando sincronización TOTEM con Google Sheets API...');
       
-      // Obtener datos directamente desde Sheet.best
-      const sheetResult = await this.sheetBestService.fetchAndProcessData();
+      // Obtener datos directamente desde Google Sheets
+      const sheetResult = await this.googleSheetService.fetchAndProcessData({ gid: options.gid });
       
       if (!sheetResult.success || !sheetResult.data || sheetResult.data.length === 0) {
-        throw new Error('No se obtuvieron datos válidos de Sheet.best');
+        throw new Error('No se obtuvieron datos válidos de Google Sheets');
       }
 
       console.log(`📊 Datos obtenidos: ${sheetResult.data.length} filas válidas`);
       
       // Validar estructura de datos
-      const validation = this.sheetBestService.validateDataStructure(sheetResult.data);
+      const validation = this.googleSheetService.validateDataStructure(sheetResult.data);
       if (!validation.isValid) {
         console.warn(`⚠️ Validación: ${validation.issues.length} problemas encontrados`);
         validation.issues.slice(0, 5).forEach(issue => {
@@ -38,18 +263,31 @@ class TotemService {
       }
 
       // Detectar tipos de exámenes y sectores
-      const detection = this.sheetBestService.detectExamTypes(sheetResult.data);
+      const detection = this.googleSheetService.detectExamTypes(sheetResult.data);
       console.log(`🔍 Detectados: ${detection.totalUniqueSectors} sectores, ${detection.totalUniqueCareers} carreras`);
 
       // Guardar datos brutos en TotemData
-      const totemDataRecord = await this.saveRawTotemData('sheet.best', sheetResult.data, sheetResult.metadata);
+      const source = options.gid ? `google-sheets:gid=${options.gid}` : 'google-sheets';
+      const totemDataRecord = await this.saveRawTotemData(source, sheetResult.data, sheetResult.metadata);
+
+      const gid = options.gid ?? null;
+      let sheetName = options.sheetName ?? null;
+      if (gid && !sheetName) {
+        try {
+          const sheetsResult = await this.googleSheetService.listSheets();
+          const match = sheetsResult?.data?.find(s => s?.gid?.toString() === gid.toString());
+          sheetName = match?.name ?? null;
+        } catch (e) {
+          sheetName = null;
+        }
+      }
       
       // Procesar los datos y crear exámenes
-      const processedExams = await this.processTotemDataToExams(sheetResult.data);
+      const processedExams = await this.processTotemDataToExams(sheetResult.data, { gid, sheetName });
       
       // 🚀 NUEVA FUNCIONALIDAD: Sincronización automática de inscriptos
       console.log('🔄 Iniciando sincronización automática de inscriptos...');
-      const inscriptosResult = await this.syncInscriptosAutomatico(processedExams.created.concat(processedExams.updated));
+      await this.syncInscriptosAutomatico(processedExams.created.concat(processedExams.updated));
       
       const duration = Date.now() - startTime;
       
@@ -64,6 +302,7 @@ class TotemService {
           totemDataId: totemDataRecord.id,
           examensCreated: processedExams.created.length,
           examensUpdated: processedExams.updated.length,
+          examensInactivated: processedExams.inactivated?.length || 0,
           totalProcessed: processedExams.created.length + processedExams.updated.length,
           rowsProcessed: sheetResult.data.length,
           validation: validation,
@@ -98,11 +337,12 @@ class TotemService {
     });
   }
 
-  async processTotemDataToExams(sheetData) {
+  async processTotemDataToExams(sheetData, context = {}) {
     const createdExams = [];
     const updatedExams = [];
-    let duplicatesSkipped = 0;
+    const inactivatedExams = [];
     const debugLogs = []; // Capturar logs para retornar
+    const processedKeys = new Set();
     
     console.log(`🔄 Procesando ${sheetData.length} filas para crear/actualizar exámenes...`);
     
@@ -148,7 +388,7 @@ class TotemService {
     for (const row of sheetData) {
       try {
         // Extraer datos del row (ya viene limpio de Sheet.best)
-        const totemData = this.extractTotemRowData(row);
+        const totemData = extractTotemRowData(row);
         
         if (!totemData.sector || !totemData.carrera || !totemData.materia || !totemData.fecha) {
           console.log('Fila incompleta, omitiendo:', { 
@@ -159,6 +399,9 @@ class TotemService {
           });
           continue;
         }
+
+        processedKeys.add(this.buildExamKeyFromTotemData(totemData));
+
 
         // 1. Mapear sector a facultad
         const facultad = await this.mapSectorToFacultad(totemData.sector);
@@ -174,11 +417,8 @@ class TotemService {
           continue;
         }
 
-        // 3. Buscar o crear aula si hay información
-        const aula = await this.findOrCreateAula(totemData);
-
         // 4. 🆕 VERIFICAR SI EXISTE PARA ACTUALIZAR O CREAR
-        const existeExamen = await this.checkExamenDuplicate(totemData, carrera.id);
+        const existeExamen = await this.checkExamenDuplicate(totemData, carrera.id, context);
         
         if (existeExamen) {
           // 🔄 ACTUALIZAR EXAMEN EXISTENTE CON NUEVOS DATOS DEL SHEET
@@ -187,10 +427,10 @@ class TotemService {
           console.log(`🔄 ACTUALIZANDO EXAMEN EXISTENTE: ${totemData.sector}/${totemData.carrera}/${totemData.materia} (${totemData.fecha.toDateString()} ${horaStr}) - ID: ${existeExamen.id}`);
           
           // Actualizar el examen con los nuevos datos
-          const examenActualizado = await this.updateExamenFromTotem(existeExamen.id, totemData, carrera.id, facultad.id, aula?.id);
+          const examenActualizado = await this.updateExamenFromTotem(existeExamen.id, totemData, carrera.id, facultad.id, null);
           
           // Actualizar también el registro ExamenTotem con datos originales actualizados
-          await this.updateExamenTotemRecord(existeExamen.id, totemData, row);
+          await this.updateExamenTotemRecord(existeExamen.id, totemData, row, context);
           
           updatedExams.push(examenActualizado);
           
@@ -198,10 +438,10 @@ class TotemService {
           // 5. ✅ CREAR NUEVO EXAMEN (no existe)
           console.log(`✅ CREANDO NUEVO EXAMEN: ${totemData.sector}/${totemData.carrera}/${totemData.materia}`);
           
-          const examen = await this.createExamenFromTotem(totemData, carrera.id, facultad.id, aula?.id);
+          const examen = await this.createExamenFromTotem(totemData, carrera.id, facultad.id, null);
           
           // Crear registro de ExamenTotem con datos originales
-          await this.createExamenTotemRecord(examen.id, totemData, row);
+          await this.createExamenTotemRecord(examen.id, totemData, row, context);
           
           createdExams.push(examen);
         }
@@ -211,177 +451,85 @@ class TotemService {
       }
     }
 
+    if (context?.gid) {
+      try {
+        const existing = await prisma.examen.findMany({
+          where: {
+            activo: true,
+            examenTotem: {
+              gid: context.gid.toString()
+            }
+          },
+          include: {
+            examenTotem: true
+          }
+        });
+
+        const toInactivateIds = [];
+        for (const ex of existing) {
+          const k = this.buildExamKeyFromExistingExam(ex);
+          if (!processedKeys.has(k)) {
+            toInactivateIds.push(ex.id);
+          }
+        }
+
+        if (toInactivateIds.length > 0) {
+          await prisma.examen.updateMany({
+            where: { id: { in: toInactivateIds } },
+            data: { activo: false }
+          });
+          inactivatedExams.push(...toInactivateIds);
+        }
+      } catch (e) {
+        console.error('Error realizando soft-delete por gid:', e);
+      }
+    }
+
     console.log(`✅ Procesamiento completado: ${createdExams.length} exámenes creados, ${updatedExams.length} exámenes actualizados`);
     
     return { 
       created: createdExams, 
       updated: updatedExams,
+      inactivated: inactivatedExams,
       ucasalMappingResult,
       debugLogs 
     };
   }
 
-  extractTotemRowData(row) {
-    // 🔧 FORMATO CORREGIDO: usar nombres de propiedades procesadas por SheetBestService
-    return {
-      sector: row.SECTOR?.toString().trim(),           // SECTOR
-      carrera: row.CARRERA?.toString().trim(),         // CARRERA  
-      modo: row.MODO?.toString().trim(),               // MODO
-      areaTema: row.AREATEMA?.toString().trim(),       // AREATEMA
-      materia: row.MATERIA?.toString().trim(),         // MATERIA
-      año: row['AÑO']?.toString().trim(),              // AÑO
-      nombreCorto: row['NOMBRE CORTO']?.toString().trim(), // NOMBRE CORTO
-      fecha: this.parseTotemDate(row.FECHA),           // FECHA
-      url: row.URL?.toString().trim(),                 // URL
-      catedra: row['CÁTEDRA']?.toString().trim(),      // CÁTEDRA
-      docente: row.Docente?.toString().trim(),         // DOCENTE
-      hora: this.parseTotemTime(row.Hora),             // HORA
-      tipoExamen: row['Tipo Examen']?.toString().trim(), // TIPO EXAMEN
-      monitoreo: row.Monitoreo?.toString().trim(),     // MONITOREO
-      control: row['Control a cargo de:']?.toString().trim(), // CONTROL
-      observaciones: row.Observaciones?.toString().trim(), // OBSERVACIONES
-      materialPermitido: row['Material Permitido']?.toString().trim() // MATERIAL PERMITIDO
-    };
+  buildExamKeyFromTotemData(totemData) {
+    const hora = totemData.hora
+      ? `${totemData.hora.getUTCHours()}:${String(totemData.hora.getUTCMinutes()).padStart(2, '0')}`
+      : '';
+    const fecha = totemData.fecha instanceof Date
+      ? totemData.fecha.toISOString().split('T')[0]
+      : '';
+    return [
+      totemData.materia?.toString().trim().toLowerCase() || '',
+      totemData.areaTema?.toString().trim().toLowerCase() || '',
+      fecha,
+      hora,
+      totemData.carrera?.toString().trim().toLowerCase() || '',
+      totemData.docente?.toString().trim().toLowerCase() || '',
+      totemData.catedra?.toString().trim().toLowerCase() || ''
+    ].join('|');
   }
 
-  parseTotemDate(dateString) {
-    if (!dateString) return null;
-    
-    try {
-      // Formato DD/MM/YYYY del TOTEM (ej: "30/6/2025")
-      const parts = dateString.toString().split('/');
-      if (parts.length === 3) {
-        const [dia, mes, año] = parts;
-        return new Date(parseInt(año), parseInt(mes) - 1, parseInt(dia));
-      }
-      return null;
-    } catch (error) {
-      console.error('Error parseando fecha TOTEM:', dateString, error);
-      return null;
-    }
-  }
-
-  parseTotemTime(timeString) {
-    if (!timeString) return null;
-    
-    try {
-      // Formato HH:MM del TOTEM (ej: "14:00")
-      const parts = timeString.toString().split(':');
-      if (parts.length === 2) {
-        const [hours, minutes] = parts;
-        const time = new Date();
-        time.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-        return time;
-      }
-      return null;
-    } catch (error) {
-      console.error('Error parseando hora TOTEM:', timeString, error);
-      return null;
-    }
-  }
-
-  async mapSectorToFacultad(sector) {
-    try {
-      // ✅ LÓGICA CORRECTA: usar tabla SectorFacultad para el mapeo
-      const mapeoSector = await prisma.sectorFacultad.findFirst({
-        where: { 
-          sector: sector.toString(),
-          activo: true 
-        },
-        include: {
-          facultad: true
-        }
-      });
-      
-      if (mapeoSector?.facultad) {
-        console.log(`🎯 Mapeo correcto: Sector "${sector}" → Facultad "${mapeoSector.facultad.nombre}"`);
-        return mapeoSector.facultad;
-      }
-      
-      console.log(`⚠️ Sector "${sector}" NO está mapeado a ninguna facultad`);
-      return null;
-    } catch (error) {
-      console.error('Error mapeando sector:', error);
-      return null;
-    }
-  }
-
-  async mapCarreraTotem(carreraCodigoTotem, facultadId) {
-    try {
-      // Buscar mapeo existente
-      const mapping = await prisma.carreraTotem.findFirst({
-        where: { 
-          codigoTotem: carreraCodigoTotem.toString(),
-          esMapeada: true,
-          activo: true
-        },
-        include: { carrera: true }
-      });
-
-      if (mapping?.carrera) {
-        return mapping.carrera;
-      }
-
-      // Si no existe mapeo, crear registro de carrera no mapeada
-      await prisma.carreraTotem.upsert({
-        where: { codigoTotem: carreraCodigoTotem.toString() },
-        update: { nombreTotem: `Carrera TOTEM ${carreraCodigoTotem}` },
-        create: {
-          codigoTotem: carreraCodigoTotem.toString(),
-          nombreTotem: `Carrera TOTEM ${carreraCodigoTotem}`,
-          esMapeada: false,
-          activo: true
-        }
-      });
-
-      return null;
-    } catch (error) {
-      console.error('Error mapeando carrera TOTEM:', error);
-      return null;
-    }
-  }
-
-  async findOrCreateAula(totemData) {
-    // Por ahora no crear aulas automáticamente
-    // Se puede implementar lógica específica según necesidades
-    return null;
-  }
-
-  async createExamenFromTotem(totemData, carreraId, facultadId, aulaId = null) {
-    return await prisma.examen.create({
-      data: {
-        // IDs de relación
-        carreraId,
-        facultadId,    // ✅ NUEVO: requerido
-        aulaId,
-        
-        // Campos para match con sistemas externos
-        materia_codigo: totemData.materia?.toString() || 'SIN_CODIGO',     // ✅ NUEVO: requerido
-        nombreMateria: totemData.nombreCorto || totemData.materia || 'Sin nombre',
-        areatema: totemData.areaTema,  // ✅ NUEVO: para match UCASAL
-        
-        // Información básica del examen
-        fecha: totemData.fecha,
-        hora: totemData.hora,
-        tipoExamen: totemData.tipoExamen,
-        modalidadExamen: totemData.tipoExamen?.includes('Virtual') ? 'virtual' : 'presencial',
-        
-        // Información de personal
-        catedra: totemData.catedra,         // ✅ NUEVO
-        docente: totemData.docente,         // ✅ NUEVO
-        monitoreo: totemData.monitoreo,
-        control_cargo: totemData.control,   // ✅ NUEVO
-        
-        // Información adicional
-        materialPermitido: totemData.materialPermitido,
-        observaciones: totemData.observaciones,
-        url: totemData.url,                 // ✅ NUEVO
-        
-        // Control de sistema
-        cantidadInscriptos: 0,
-        activo: true
-      }
-    });
+  buildExamKeyFromExistingExam(examen) {
+    const hora = examen.hora
+      ? `${examen.hora.getUTCHours()}:${String(examen.hora.getUTCMinutes()).padStart(2, '0')}`
+      : '';
+    const fecha = examen.fecha instanceof Date
+      ? examen.fecha.toISOString().split('T')[0]
+      : '';
+    return [
+      examen.examenTotem?.materiaTotem?.toString().trim().toLowerCase() || '',
+      examen.examenTotem?.areaTemaTotem?.toString().trim().toLowerCase() || '',
+      fecha,
+      hora,
+      examen.examenTotem?.carreraTotem?.toString().trim().toLowerCase() || '',
+      examen.examenTotem?.docenteTotem?.toString().trim().toLowerCase() || '',
+      examen.examenTotem?.catedraTotem?.toString().trim().toLowerCase() || ''
+    ].join('|');
   }
 
   async updateExamenFromTotem(examenId, totemData, carreraId, facultadId, aulaId = null) {
@@ -422,7 +570,8 @@ class TotemService {
         url: totemData.url,                 // ✅ NUEVO
         
         // Control de sistema
-        fechaUltConsulta: new Date()
+        fechaUltConsulta: new Date(),
+        activo: true
       };
     
     return await prisma.examen.update({
@@ -431,10 +580,12 @@ class TotemService {
     });
   }
 
-  async createExamenTotemRecord(examenId, totemData, originalRow) {
+  async createExamenTotemRecord(examenId, totemData, originalRow, context = {}) {
     return await prisma.examenTotem.create({
       data: {
         examenId,
+        gid: context?.gid ? context.gid.toString() : null,
+        sheetName: context?.sheetName ?? null,
         sectorTotem: totemData.sector,
         carreraTotem: totemData.carrera,
         materiaTotem: totemData.materia,
@@ -450,10 +601,12 @@ class TotemService {
     });
   }
 
-  async updateExamenTotemRecord(examenId, totemData, originalRow) {
+  async updateExamenTotemRecord(examenId, totemData, originalRow, context = {}) {
     return await prisma.examenTotem.update({
       where: { examenId },
       data: {
+        gid: context?.gid ? context.gid.toString() : null,
+        sheetName: context?.sheetName ?? null,
         sectorTotem: totemData.sector,
         carreraTotem: totemData.carrera,
         materiaTotem: totemData.materia,
@@ -485,20 +638,29 @@ class TotemService {
   }
 
   async getSectoresNoMapeados() {
-    // Implementar lógica para detectar sectores desde Sheet.best que no están mapeados
-    const sheetResult = await this.sheetBestService.fetchAndProcessData();
-    const detection = this.sheetBestService.detectExamTypes(sheetResult.data);
-    
-    const sectoresEncontrados = detection.sectors;
-    const sectoresMapeados = await prisma.sectorFacultad.findMany({
-      where: { activo: true },
-      select: { sector: true }
-    });
-    
-    const sectoresMapeadosArray = sectoresMapeados.map(s => s.sector);
-    const sectoresNoMapeados = sectoresEncontrados.filter(s => !sectoresMapeadosArray.includes(s));
-    
-    return sectoresNoMapeados;
+    try {
+      // Implementar lógica para detectar sectores desde Sheet.best que no están mapeados
+      const sheetResult = await this.googleSheetService.fetchAndProcessData();
+      const detection = this.googleSheetService.detectExamTypes(sheetResult.data);
+      
+      const sectoresEncontrados = (detection.sectors || [])
+        .map(s => s?.toString().trim())
+        .filter(Boolean);
+      const sectoresMapeados = await prisma.sectorFacultad.findMany({
+        where: { activo: true },
+        select: { sector: true }
+      });
+      
+      const sectoresMapeadosArray = sectoresMapeados
+        .map(s => s.sector?.toString().trim())
+        .filter(Boolean);
+      const sectoresNoMapeados = sectoresEncontrados.filter(s => !sectoresMapeadosArray.includes(s));
+      
+      return sectoresNoMapeados;
+    } catch (error) {
+      console.error('Error obteniendo sectores desde Google Sheets:', error);
+      return [];
+    }
   }
 
   async getCarrerasTotemNoMapeadas() {
@@ -515,11 +677,18 @@ class TotemService {
     const [
       totalTotemData,
       totalExamenes,
+      totalExamenesDesdeHoy,
       sectoresNoMapeados,
       carrerasNoMapeadas
     ] = await Promise.all([
       prisma.totemData.count(),
       prisma.examen.count(),
+      prisma.examen.count({
+        where: {
+          activo: true,
+          fecha: { gte: new Date(new Date().toISOString().split('T')[0] + 'T00:00:00.000Z') }
+        }
+      }),
       this.getSectoresNoMapeados(),
       this.getCarrerasTotemNoMapeadas()
     ]);
@@ -527,6 +696,7 @@ class TotemService {
     return {
       totalRegistrosTotem: totalTotemData,
       totalExamenesCreados: totalExamenes,
+      totalExamenesDesdeHoy,
       sectoresNoMapeados: sectoresNoMapeados.length,
       carrerasNoMapeadas: carrerasNoMapeadas.length,
       listaSectoresNoMapeados: sectoresNoMapeados,
@@ -535,202 +705,75 @@ class TotemService {
   }
 
   /**
-   * 🔍 VERIFICACIÓN CORRECTA DE DUPLICADOS SEGÚN CONVERGENCIA
+   * VERIFICACIÓN CORRECTA DE DUPLICADOS SEGÚN CONVERGENCIA
    * Un examen es único si difiere en: materia + areaTema + fecha + horario + catedra
    */
-  async checkExamenDuplicate(totemData, carreraId) {
+  async checkExamenDuplicate(totemData, carreraId, context = {}) {
     try {
-      console.log('🔍 Verificando duplicado con criterios de convergencia...');
-      
-      // 🎯 CRITERIOS DE UNICIDAD: materia + areaTema + fecha + horario + catedra
-      const criteriosUnicidad = {
-        materia: totemData.materia?.toString().trim().toLowerCase() || '',
-        areaTema: totemData.areaTema?.toString().trim().toLowerCase() || '',
-        fecha: totemData.fecha?.toDateString() || '',
-        horario: totemData.hora ? `${totemData.hora.getHours()}:${String(totemData.hora.getMinutes()).padStart(2, '0')}` : '',
-        catedra: totemData.catedra?.toString().trim().toLowerCase() || ''
-      };
+      // Extraer YYYY-MM-DD en UTC para evitar problemas de timezone en el query
+      const dateStr = totemData.fecha instanceof Date
+        ? totemData.fecha.toISOString().split('T')[0]
+        : null;
 
-      console.log('📋 Criterios de búsqueda:', criteriosUnicidad);
-      
-      // 🔍 BUSCAR EXÁMENES EXISTENTES CON LOS MISMOS CRITERIOS
-      const examenesExistentes = await prisma.examen.findMany({
+      if (!dateStr) return null;
+
+      const fechaInicio = new Date(dateStr + 'T00:00:00.000Z');
+      const fechaFin    = new Date(dateStr + 'T23:59:59.999Z');
+
+      // hora en UTC para comparar en JS (evita problemas con cómo Prisma serializa TIME)
+      const horaUTCStr = totemData.hora
+        ? `${totemData.hora.getUTCHours()}:${String(totemData.hora.getUTCMinutes()).padStart(2, '0')}`
+        : null;
+
+      // Query directo a BD con todos los campos de unicidad — sin carga de toda la fecha en memoria
+      // La colación utf8mb4_unicode_ci en MySQL hace la comparación case-insensitive automáticamente
+      const candidatos = await prisma.examen.findMany({
         where: {
-          fecha: totemData.fecha,
-          activo: true
+          carreraId,
+          fecha: { gte: fechaInicio, lte: fechaFin },
+          activo: true,
+          examenTotem: {
+            materiaTotem:  totemData.materia?.toString().trim()  || '',
+            areaTemaTotem: totemData.areaTema?.toString().trim() || null,
+            docenteTotem:  totemData.docente?.toString().trim()  || null,
+            catedraTotem:  totemData.catedra?.toString().trim()  || null,
+          },
         },
-        include: {
-          examenTotem: true
-        }
+        include: { examenTotem: true },
       });
 
-      console.log(`📊 Verificando ${examenesExistentes.length} exámenes de la misma fecha`);
+      if (candidatos.length === 0) return null;
 
-      // 🔍 COMPARAR CADA EXAMEN EXISTENTE
-      for (const examen of examenesExistentes) {
-        if (!examen.examenTotem) continue;
+      // Si hay un solo candidato (caso más frecuente), devolverlo directamente
+      if (candidatos.length === 1) {
+        console.log(`✅ DUPLICADO DETECTADO: Examen ID ${candidatos[0].id} (${candidatos[0].nombreMateria})`);
+        return candidatos[0];
+      }
 
-        const criteriosExistente = {
-          materia: examen.examenTotem.materiaTotem?.toString().trim().toLowerCase() || '',
-          areaTema: examen.examenTotem.areaTemaTotem?.toString().trim().toLowerCase() || '',
-          fecha: examen.fecha?.toDateString() || '',
-          horario: examen.hora ? `${examen.hora.getHours()}:${String(examen.hora.getMinutes()).padStart(2, '0')}` : '',
-          catedra: examen.examenTotem.catedraTotem?.toString().trim().toLowerCase() || ''
-        };
-
-        // ✅ VERIFICAR SI TODOS LOS CRITERIOS COINCIDEN
-        const esIgual = 
-          criteriosUnicidad.materia === criteriosExistente.materia &&
-          criteriosUnicidad.areaTema === criteriosExistente.areaTema &&
-          criteriosUnicidad.fecha === criteriosExistente.fecha &&
-          criteriosUnicidad.horario === criteriosExistente.horario &&
-          criteriosUnicidad.catedra === criteriosExistente.catedra;
-
-        if (esIgual) {
-          console.log(`🔴 DUPLICADO DETECTADO: Examen ID ${examen.id}`);
-          console.log(`   Criterios coincidentes:`, criteriosExistente);
-          return examen;
+      // Más de un candidato: desempatar por hora en UTC
+      if (horaUTCStr !== null) {
+        for (const c of candidatos) {
+          if (!c.hora) continue;
+          const existingHora = `${c.hora.getUTCHours()}:${String(c.hora.getUTCMinutes()).padStart(2, '0')}`;
+          if (existingHora === horaUTCStr) {
+            console.log(`✅ DUPLICADO DETECTADO (por hora): Examen ID ${c.id}`);
+            return c;
+          }
         }
       }
 
-      console.log(`✅ NO ES DUPLICADO - Criterios únicos:`, criteriosUnicidad);
-      return null;
+      // Sin candidato exacto por hora, devolver el primero
+      console.log(`✅ DUPLICADO DETECTADO (fallback): Examen ID ${candidatos[0].id}`);
+      return candidatos[0];
 
     } catch (error) {
-      console.error('❌ Error verificando duplicado:', error);
+      console.error('❌ Error en checkExamenDuplicate:', error);
       return null;
     }
   }
 
   /**
-   * 🎯 MAPEO COMPLETO PREVIO - Asegura que todo esté mapeado antes de crear exámenes
-   */
-  async ensureCompleteMapping(sheetData) {
-    console.log('🗺️  INICIANDO MAPEO COMPLETO PREVIO...');
-    
-    // 1. EXTRAER TODOS LOS DATOS ÚNICOS - USAR PROPIEDADES NOMBRADAS
-    const sectoresUnicos = [...new Set(sheetData.map(row => row.SECTOR?.toString().trim()).filter(s => s))];
-    const carrerasUnicas = [...new Set(sheetData.map(row => row.CARRERA?.toString().trim()).filter(c => c))];
-    // ✅ NO EXTRAER AULAS DEL CAMPO MONITOREO - ESO ES INCORRECTO
-    const aulasUnicas = []; // Las aulas se manejan por separado, no desde el Excel
-    
-    console.log(`📊 Detectados: ${sectoresUnicos.length} sectores, ${carrerasUnicas.length} carreras, ${aulasUnicas.length} aulas`);
-    
-    // 2. MAPEAR TODOS LOS SECTORES
-    let sectoresMapeados = 0;
-    for (const sector of sectoresUnicos) {
-      const facultadExistente = await this.mapSectorToFacultad(sector);
-      if (!facultadExistente) {
-        // Crear facultad por defecto si no existe mapeo
-        const nuevaFacultad = await prisma.facultad.create({
-          data: {
-            nombre: `Facultad ${sector}`,
-            codigo: sector.substring(0, 10),
-            activa: true
-          }
-        });
-        
-        await this.createSectorFacultadMapping(sector, nuevaFacultad.id);
-        sectoresMapeados++;
-        console.log(`   🆕 Sector "${sector}" → Nueva Facultad "${nuevaFacultad.nombre}"`);
-      }
-    }
-    
-    // 3. MAPEAR TODAS LAS CARRERAS
-    let carrerasMapeadas = 0;
-    for (const carreraCode of carrerasUnicas) {
-      // Buscar si ya está mapeada
-      const carreraExistente = await prisma.carreraTotem.findUnique({
-        where: { codigoTotem: carreraCode },
-        include: { carrera: true }
-      });
-      
-      if (!carreraExistente || !carreraExistente.esMapeada) {
-        // 🎯 DETERMINAR FACULTAD CORRECTA SEGÚN EL SECTOR
-        // Buscar qué sector corresponde a esta carrera en los datos
-        const filaConCarrera = sheetData.find(row => row.CARRERA?.toString().trim() === carreraCode);
-        const sectorCorrespondiente = filaConCarrera?.SECTOR?.toString().trim(); // SECTOR como propiedad nombrada
-        
-        // Mapear el sector a facultad
-        let facultadParaCarrera = null;
-        if (sectorCorrespondiente) {
-          facultadParaCarrera = await this.mapSectorToFacultad(sectorCorrespondiente);
-          console.log(`🔍 Mapeo sector "${sectorCorrespondiente}" → Facultad: ${facultadParaCarrera?.nombre || 'NO ENCONTRADA'}`);
-        }
-        
-        // 🚨 NO MÁS FALLBACK AUTOMÁTICO - EXIGIR MAPEO CORRECTO
-        if (!facultadParaCarrera) {
-          console.error(`❌ ERROR CRÍTICO: Sector "${sectorCorrespondiente}" para carrera "${carreraCode}" NO tiene facultad mapeada`);
-          console.error(`   Este error debe corregirse antes de continuar la sincronización`);
-          console.error(`   Usa el endpoint de mapeo de sectores para corregir esto`);
-          
-          // Saltear esta carrera en lugar de asignar incorrectamente
-          console.log(`⏭️ Saltando carrera "${carreraCode}" hasta que se corrija el mapeo`);
-          continue;
-        }
-        
-        // Buscar si ya existe una carrera con este código en la BD
-        const carreraEnBD = await prisma.carrera.findFirst({
-          where: { 
-            codigo: carreraCode.substring(0, 10),
-            facultadId: facultadParaCarrera.id
-          }
-        });
-        
-        let carreraId;
-        if (carreraEnBD) {
-          // Usar carrera existente
-          carreraId = carreraEnBD.id;
-          console.log(`   🔗 Carrera "${carreraCode}" → Carrera existente "${carreraEnBD.nombre}" (${facultadParaCarrera.nombre})`);
-        } else {
-          // Crear nueva carrera con la facultad correcta
-          const nuevaCarrera = await prisma.carrera.create({
-            data: {
-              nombre: `Carrera ${carreraCode}`,
-              codigo: carreraCode.substring(0, 10),
-              facultadId: facultadParaCarrera.id, // ✅ USAR FACULTAD CORRECTA
-              activa: true
-            }
-          });
-          carreraId = nuevaCarrera.id;
-          console.log(`   🆕 Carrera "${carreraCode}" → Nueva Carrera "${nuevaCarrera.nombre}" (${facultadParaCarrera.nombre})`);
-        }
-        
-        await this.mapCarreraTotemToCarrera(carreraCode, carreraId);
-        carrerasMapeadas++;
-      }
-    }
-    
-    // 4. CREAR AULAS SI ES NECESARIO
-    let aulasCreadas = 0;
-    for (const aulaInfo of aulasUnicas) {
-      if (aulaInfo && aulaInfo !== 'undefined') {
-        const aulaExistente = await prisma.aula.findFirst({
-          where: { 
-            nombre: { contains: aulaInfo }
-          }
-        });
-        
-        if (!aulaExistente) {
-          await prisma.aula.create({
-            data: {
-              nombre: `Aula ${aulaInfo}`,
-              capacidad: 50, // Capacidad por defecto
-              sede: 'Campus Central', // Sede por defecto
-              activa: true
-            }
-          });
-          aulasCreadas++;
-          console.log(`   🆕 Aula "${aulaInfo}" creada`);
-        }
-      }
-    }
-    
-    console.log(`✅ MAPEO COMPLETADO: ${sectoresMapeados} sectores, ${carrerasMapeadas} carreras, ${aulasCreadas} aulas`);
-  }
-
-  /**
-   * 🌐 OBTENER INSCRIPTOS DESDE UCASAL - VERSIÓN MEJORADA
+   *  OBTENER INSCRIPTOS DESDE UCASAL - VERSIÓN MEJORADA
    * Match usando materia_codigo + areaTema según datos reales del usuario
    */
   async obtenerInscriptosUcasal(examenId) {
@@ -749,6 +792,7 @@ class TotemService {
       // CORREGIDO: Usar materiaTotem en lugar de materia_codigo
       const materiaCode = examen.examenTotem?.materiaTotem;
       const areaTema = examen.examenTotem?.areaTemaTotem;
+      const carreraTotem = examen.examenTotem?.carreraTotem;
       const fecha = examen.fecha;
       
       // Validar que tenemos los datos necesarios
@@ -762,8 +806,10 @@ class TotemService {
       // Formatear fechas con DD/MM/YYYY (con ceros a la izquierda)
       const fechaDesdeStr = formatDateDDMMYYYY(fechaExamen);
       
-      // 3. Construir URL de UCASAL - CONSULTA MÁS ESPECÍFICA
-      const ucasalUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materiaCode}?rendida=false&fechaDesde=${fechaDesdeStr}`;
+      // 3. Construir URL de UCASAL (producción) con areaTema
+      // fechaHasta = mismo día que fechaDesde para acotar solo el examen en cuestión
+      const ucasalBaseUrl = process.env.UCASAL_API_URL || 'https://backprod.ucasal.edu.ar/actas/v1';
+      const ucasalUrl = `${ucasalBaseUrl}/acta/materia/${materiaCode}?rendida=false&fechaDesde=${fechaDesdeStr}&fechaHasta=${fechaDesdeStr}${areaTema ? `&areaTema=${areaTema}` : ''}`;
       
       console.log(`🔍 Consultando UCASAL: materia=${materiaCode}, areaTema=${areaTema}, fecha=${fechaDesdeStr}`);
       
@@ -836,8 +882,8 @@ class TotemService {
         };
       }
       
-      // 5. Filtrar por areaTema específico (SIN filtro de carrera para evitar inconsistencias)
-      const actasFiltradas = actasData.filter(acta => {
+      // 5. Filtrar por materia, areaTema Y carrera para asociar correctamente los inscriptos
+      let actasFiltradas = actasData.filter(acta => {
         // Convertir a string para comparación segura
         const materiaActaStr = String(acta.materia).trim();
         const materiaExamenStr = String(materiaCode).trim();
@@ -850,29 +896,78 @@ class TotemService {
           const areaExamenStr = String(areaTema).trim();
           coincideAreaTema = areaActaStr === areaExamenStr;
         }
+
+        // Filtrar por carrera para no mezclar inscriptos de distintas carreras con la misma materia
+        let coincideCarrera = true;
+        if (carreraTotem && carreraTotem !== 'null' && carreraTotem !== '') {
+          const carreraActaStr = String(acta.carrera || '').trim();
+          const carreraExamenStr = String(carreraTotem).trim();
+          coincideCarrera = carreraActaStr === carreraExamenStr;
+        }
         
-        console.log(`🔍 Acta: materia=${acta.materia}, areaTema=${acta.areaTema}, coincideMateria=${coincideMateria}, coincideAreaTema=${coincideAreaTema}`);
+        console.log(`🔍 Acta: materia=${acta.materia}, areaTema=${acta.areaTema}, carrera=${acta.carrera}, coincideMateria=${coincideMateria}, coincideAreaTema=${coincideAreaTema}, coincideCarrera=${coincideCarrera}`);
         
-        return coincideMateria && coincideAreaTema;
+        return coincideMateria && coincideAreaTema && coincideCarrera;
       });
       
-      console.log(`✅ ${actasFiltradas.length} actas encontradas`);
+      console.log(`✅ ${actasFiltradas.length} actas encontradas (materia/areaTema/carrera)`);
+
+      // 🎯 DISCRIMINACIÓN POR DOCENTE + CÁTEDRA (combinada)
+      // Si existen exámenes "hermanos" (misma materia/areaTema/carrera/fecha y distinta cátedra),
+      // usamos modo strict para NO replicar los mismos inscriptos en cada hermano.
+      if ((examen.docente || examen.catedra) && actasFiltradas.length > 0) {
+        const dateStr = examen.fecha instanceof Date
+          ? examen.fecha.toISOString().split('T')[0]
+          : null;
+        const fechaInicio = dateStr ? new Date(dateStr + 'T00:00:00.000Z') : null;
+        const fechaFin    = dateStr ? new Date(dateStr + 'T23:59:59.999Z') : null;
+
+        let siblingsCount = 1;
+        if (fechaInicio && fechaFin) {
+          siblingsCount = await prisma.examen.count({
+            where: {
+              activo: true,
+              carreraId: examen.carreraId,
+              fecha: { gte: fechaInicio, lte: fechaFin },
+              examenTotem: {
+                materiaTotem: materiaCode,
+                areaTemaTotem: areaTema || null,
+              },
+            },
+          });
+        }
+        const tieneCatedraExplicita = examen.catedra && examen.catedra !== '-' && examen.catedra.trim() !== '';
+        const strict = tieneCatedraExplicita || siblingsCount > 1;
+        console.log(`👥 Exámenes hermanos detectados: ${siblingsCount} (strict=${strict})`);
+
+        actasFiltradas = filtrarActasPorIdentidad(
+          actasFiltradas,
+          examen.docente,
+          examen.catedra,
+          { umbral: 0.4, strict }
+        );
+        console.log(`🎯 Tras discriminar por identidad: ${actasFiltradas.length} actas`);
+      }
       
       // 6. Extraer estudiantes de todas las actas filtradas
-      let estudiantesTotal = [];
-      let estudiantesUnicos = new Set();
+      const estudiantesTotal = [];
+
+      // Filtro obligatorio: modo=7
+      const MODO_REQUERIDO = "7";
       
       for (const acta of actasFiltradas) {
         if (acta.alumnos && Array.isArray(acta.alumnos)) {
           for (const alumno of acta.alumnos) {
-            // 🎯 FILTRO OBLIGATORIO: Solo inscriptos con lugar === "3" (SALTA - DISTANCIA)
-            // Este filtro es EXCLUYENTE y OBLIGATORIO según las especificaciones
-            if (alumno.lugar === "3") {
+            // 🎯 FILTROS OBLIGATORIOS: lugar=3 (número) Y modo="7"
+            // lugar es un número en la API, usar toString() para comparación segura
+            const esLugarValido = alumno.lugar?.toString() === "3";
+            const esModoValido = alumno.modo?.toString() === MODO_REQUERIDO;
+            
+            if (esLugarValido && esModoValido) {
               estudiantesTotal.push(alumno);
-              estudiantesUnicos.add(alumno.ndocu);
-              console.log(`✅ Inscripto válido: ${alumno.apen}, lugar="${alumno.lugar}", nombreLugar="${alumno.nombreLugar}"`);
+              console.log(`✅ Inscripto válido: ${alumno.apen}, lugar="${alumno.lugar}", modo="${alumno.modo}"`);
             } else {
-              console.log(`❌ Inscripto filtrado: ${alumno.apen}, lugar="${alumno.lugar}", nombreLugar="${alumno.nombreLugar}" - NO es lugar "3"`);
+              console.log(`❌ Filtrado: ${alumno.apen}, lugar="${alumno.lugar}", modo="${alumno.modo}" - Requiere lugar=3 Y modo=7`);
             }
           }
         }
@@ -886,22 +981,23 @@ class TotemService {
       
       for (const alumno of estudiantesTotal) {
         // Evitar duplicados por DNI
-        if (estudiantesProcesados.has(alumno.ndocu)) {
+        const dniStr = alumno.ndocu?.toString();
+        if (!dniStr || estudiantesProcesados.has(dniStr)) {
           continue;
         }
         
-        estudiantesProcesados.add(alumno.ndocu);
+        estudiantesProcesados.add(dniStr);
         
         try {
           // Verificar si el estudiante ya existe
           await prisma.estudiante.upsert({
-            where: { dni: alumno.ndocu },
+            where: { dni: dniStr },
             update: {
               nombre: alumno.apen ? alumno.apen.split(',')[1]?.trim() || 'Sin nombre' : 'Sin nombre',
               apellido: alumno.apen ? alumno.apen.split(',')[0]?.trim() || 'Sin apellido' : 'Sin apellido'
             },
             create: {
-              dni: alumno.ndocu,
+              dni: dniStr,
               nombre: alumno.apen ? alumno.apen.split(',')[1]?.trim() || 'Sin nombre' : 'Sin nombre',
               apellido: alumno.apen ? alumno.apen.split(',')[0]?.trim() || 'Sin apellido' : 'Sin apellido',
               activo: true
@@ -913,7 +1009,7 @@ class TotemService {
             where: { 
               examen_id_dni: { 
                 examen_id: examenId, 
-                dni: alumno.ndocu 
+                dni: dniStr
               }
             },
             update: {
@@ -923,7 +1019,7 @@ class TotemService {
             },
             create: {
               examen_id: examenId,
-              dni: alumno.ndocu,
+              dni: dniStr,
               asistencia: alumno.notaTipo !== 'AUSENTE',
               aprobado: alumno.notaTipo === 'APROBADO',
               nota: alumno.notaNota === 'AUSENTE' ? null : parseFloat(alumno.notaNota) || null
@@ -987,7 +1083,8 @@ class TotemService {
       const fechaDesdeStr = formatDateDDMMYYYY(hoy);
       
       // Consulta rápida solo para validar si la materia existe
-      const testUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${materiaCodigoTotem}?rendida=false&fechaDesde=${fechaDesdeStr}`;
+      const ucasalBaseUrl = process.env.UCASAL_API_URL || 'https://backprod.ucasal.edu.ar/actas/v1';
+      const testUrl = `${ucasalBaseUrl}/acta/materia/${materiaCodigoTotem}?rendida=false&fechaDesde=${fechaDesdeStr}${areaTema ? `&areaTema=${areaTema}` : ''}`;
       
       const response = await axios.get(testUrl, {
         timeout: 5000 // 5 segundos máximo para validación

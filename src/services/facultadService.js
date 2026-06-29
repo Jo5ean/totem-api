@@ -14,8 +14,7 @@ class FacultadService {
           },
           _count: {
             select: { 
-              carreras: true,
-              syncLogs: true 
+              carreras: true
             }
           }
         }

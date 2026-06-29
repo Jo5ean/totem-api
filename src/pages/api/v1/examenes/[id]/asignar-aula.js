@@ -26,8 +26,6 @@ export default withCors(async function handler(req, res) {
       error: 'Error interno del servidor',
       message: error.message 
     });
-  } finally {
-    await prisma.$disconnect();
   }
 })
 

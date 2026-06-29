@@ -1,9 +1,10 @@
 import TotemService from '../../../../../services/totemService.js';
 import prisma from '../../../../../lib/db.js';
+import { withCors } from '../../../../../lib/cors.js';
 
 const totemService = new TotemService();
 
-export default async function handler(req, res) {
+async function handler(req, res) {
   try {
     switch (req.method) {
       case 'GET':
@@ -118,4 +119,6 @@ async function handlePut(req, res) {
     data: carreraTotem,
     message: 'Carrera TOTEM actualizada exitosamente'
   });
-} 
+}
+
+export default withCors(handler);

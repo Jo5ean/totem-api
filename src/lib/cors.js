@@ -5,12 +5,16 @@
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3002',
+  'http://172.16.2.80:3002',
+  'http://172.16.2.80:3003',
   'http://localhost:4321',
   'http://localhost:4322',
   'http://localhost:5173',
   'https://wwwold.ucasal.edu.ar',
   'https://ucasal.edu.ar',
-  'https://*.railway.app',
+  'https://frontprod.ucasal.edu.ar',
+  'https://backprod.ucasal.edu.ar',
   'https://*.vercel.app',
   'https://*.netlify.app'
 ];
@@ -19,7 +23,7 @@ export function setCorsHeaders(res, origin) {
   // Verificar si el origen está permitido
   const isAllowedOrigin = allowedOrigins.some(allowed => {
     if (allowed.includes('*')) {
-      // Para patrones con wildcard (ej: *.railway.app)
+      // Para patrones con wildcard (ej: *.vercel.app)
       return origin && origin.includes(allowed.replace('*.', ''));
     }
     // Para dominios exactos (ej: wwwold.ucasal.edu.ar)

@@ -390,7 +390,7 @@ class UcasalMappingService {
       logs.push('🎉 MAPEO COMPLETO FINALIZADO');
       logs.push(`📊 Resumen: ${procesadas} carreras mapeadas, ${errores} errores`);
       
-      // También hacer console.log para los logs de Railway
+      // También hacer console.log para los logs del servidor
       logs.forEach(log => console.log(log));
       
       return { 

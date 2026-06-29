@@ -34,11 +34,9 @@ async function getAulas(req, res) {
     
     const filtros = {};
     
-    // Filtrar por activa (por defecto solo activas)
+    // Filtrar por activa solo si se pasa explícitamente
     if (activa !== undefined) {
       filtros.activa = activa === 'true';
-    } else {
-      filtros.activa = true; // Por defecto solo aulas activas
     }
     
     // Filtrar por sede

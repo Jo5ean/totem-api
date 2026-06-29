@@ -8,4 +8,3 @@ build/
 # Archivos temporales
 *.json
 !package*.json
-!railway.json

@@ -205,6 +205,8 @@ model CarreraTotem {
 model ExamenTotem {
   id             Int      @id @default(autoincrement())
   examenId       Int      @unique @map("examen_id")
+  gid            String?  @db.VarChar(50)
+  sheetName      String?  @map("sheet_name") @db.VarChar(255)
   sectorTotem    String   @map("sector_totem") @db.VarChar(50)
   carreraTotem   String   @map("carrera_totem") @db.VarChar(50)
   materiaTotem   String   @map("materia_totem") @db.VarChar(50)
@@ -220,6 +222,7 @@ model ExamenTotem {
   updatedAt      DateTime @updatedAt @map("updated_at")
   examen         Examen   @relation(fields: [examenId], references: [id], onDelete: Cascade)
 
+  @@index([gid], map: "examen_totem_gid_fkey")
   @@index([sectorTotem], map: "examen_totem_sector_fkey")
   @@index([carreraTotem], map: "examen_totem_carrera_fkey")
   @@map("examenes_totem")

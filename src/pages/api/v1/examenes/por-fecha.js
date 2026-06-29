@@ -29,18 +29,18 @@ export default withCors(async function handler(req, res) {
       };
     }
 
-    // Si no se especifican fechas, usar próximos 30 días
+    // Si no se especifican fechas, mostrar solo desde hoy en adelante.
+    // Los exámenes históricos quedan disponibles para estadísticas cuando se pasa fechaDesde explícito.
     if (!fechaDesde && !fechaHasta) {
       const ahora = new Date();
-      // CORREGIDO: Usar medianoche UTC puro (00:00:00.000Z)
+      // Usar medianoche UTC (00:00:00.000Z)
       const fechaActual = ahora.toISOString().split('T')[0]; // YYYY-MM-DD
       const hoy = new Date(fechaActual + 'T00:00:00.000Z');
-      const en30Dias = new Date(hoy.getTime() + 30 * 24 * 60 * 60 * 1000);
-      
-      
+      const hasta = new Date(hoy.getTime() + 365 * 24 * 60 * 60 * 1000);
+
       where.fecha = {
         gte: hoy,
-        lte: en30Dias
+        lte: hasta
       };
     }
 
@@ -58,7 +58,10 @@ export default withCors(async function handler(req, res) {
 
     // Obtener exámenes con include (no select para evitar problemas)
     const examenes = await prisma.examen.findMany({
-      where,
+      where: {
+        ...where,
+        activo: true,
+      },
       include: {
         carrera: {
           include: {
@@ -93,6 +96,8 @@ export default withCors(async function handler(req, res) {
 
       // Obtener código de materia (examenTotem es un objeto, no array)
       const codigoMateria = examen.examenTotem?.materiaTotem || null;
+      const catedra = examen.examenTotem?.catedraTotem || null;
+      const docente = examen.examenTotem?.docenteTotem || null;
       
       // DEBUG: Log específico para examen 6177
       if (examen.id === 6177) {
@@ -107,7 +112,7 @@ export default withCors(async function handler(req, res) {
       const examenFormateado = {
         id: examen.id,
         nombre: examen.nombreMateria,
-        hora: examen.hora ? examen.hora.toTimeString().split(' ')[0].substring(0, 5) : '', // HH:MM
+        hora: examen.hora ? `${String(examen.hora.getUTCHours()).padStart(2, '0')}:${String(examen.hora.getUTCMinutes()).padStart(2, '0')}` : '',
         carrera: {
           codigo: examen.carrera.codigo,
           nombre: examen.carrera.nombre,
@@ -120,6 +125,8 @@ export default withCors(async function handler(req, res) {
           ubicacion: examen.aula.sede || ''
         } : null,
         codigoMateria: codigoMateria,
+        catedra: catedra,
+        docente: docente,
         inscriptos: examen.cantidadInscriptos || undefined,
         necesitaAsignacion: !examen.aula && (examen.cantidadInscriptos > 0)
       };
@@ -170,7 +177,7 @@ export default withCors(async function handler(req, res) {
       },
       filtros: {
         fechaDesde: fechaDesde || 'hoy',
-        fechaHasta: fechaHasta || 'próximos 30 días',
+        fechaHasta: fechaHasta || 'próximos 365 días',
         soloSinAula: soloSinAula === 'true',
         soloConAula: soloConAula === 'true'
       },

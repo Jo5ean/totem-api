@@ -1,5 +1,8 @@
 import prisma from '../../../../../lib/db.js';
 import { withCors } from '../../../../../lib/cors.js';
+import ActaExternaService from '../../../../../services/actaExternaService.js';
+
+const actaService = new ActaExternaService();
 
 async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -69,24 +72,22 @@ async function handler(req, res) {
 
     console.log(`📡 Consultando materia ${codigoMateria} con areaTema ${areaTema} y carrera ${carreraTotem}`);
 
-    // 3. Consultar inscriptos desde API externa de UCASAL
-    // ✅ FORMATO CORRECTO: dd/mm/yyyy con BARRAS y CEROS OBLIGATORIOS como espera la API de UCASAL
-    const hoy = new Date();
-    const fechaDesde = `${hoy.getDate().toString().padStart(2, '0')}/${(hoy.getMonth() + 1).toString().padStart(2, '0')}/${hoy.getFullYear()}`;
-    
-    const futuro = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000);
-    const fechaHasta = `${futuro.getDate().toString().padStart(2, '0')}/${(futuro.getMonth() + 1).toString().padStart(2, '0')}/${futuro.getFullYear()}`;
+    // 3. Consultar inscriptos usando servicio centralizado
+    const fechaExamen = examen.fecha ? new Date(examen.fecha) : new Date();
+    const fechaDesdeDate = new Date(fechaExamen.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fechaHastaDate = new Date(fechaExamen.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const fechaDesde = actaService.formatDateDDMMYYYY(fechaDesdeDate);
+    const fechaHasta = actaService.formatDateDDMMYYYY(fechaHastaDate);
 
-    const apiUrl = `https://sistemasweb-desa.ucasal.edu.ar/api/v1/acta/materia/${codigoMateria}?rendida=false&fechaDesde=${fechaDesde}&fechaHasta=${fechaHasta}`;
-    
-    console.log(`📡 URL de consulta: ${apiUrl}`);
-    
-    const response = await fetch(apiUrl);
-    
-    if (!response.ok) {
-      console.error('Error en API externa:', response.status, response.statusText);
-      
-      // Si la API está caída, devolver información básica del examen con cantidad guardada
+    let datosCompletos;
+    try {
+      datosCompletos = await actaService.consultarActasPorMateria(codigoMateria, {
+        rendida: false,
+        fechaDesde,
+        fechaHasta
+      });
+    } catch (apiError) {
+      console.error('Error en API externa:', apiError.message);
       return res.status(200).json({
         success: true,
         warning: 'API externa no disponible - mostrando datos locales únicamente',
@@ -96,18 +97,9 @@ async function handler(req, res) {
             nombre: examen.nombreMateria,
             fecha: examen.fecha?.toISOString().split('T')[0],
             hora: examen.hora?.toTimeString().split(' ')[0],
-            carrera: {
-              nombre: examen.carrera.nombre,
-              facultad: examen.carrera.facultad.nombre
-            },
-            aula: examen.aula ? {
-              id: examen.aula.id,
-              nombre: examen.aula.nombre,
-              capacidad: examen.aula.capacidad
-            } : null,
-            codigoMateria: codigoMateria,
-            areaTema: areaTema,
-            carreraTotem: carreraTotem
+            carrera: { nombre: examen.carrera.nombre, facultad: examen.carrera.facultad.nombre },
+            aula: examen.aula ? { id: examen.aula.id, nombre: examen.aula.nombre, capacidad: examen.aula.capacidad } : null,
+            codigoMateria, areaTema, carreraTotem
           },
           inscriptos: [],
           cantidadInscriptos: examen.cantidadInscriptos || 0,
@@ -117,77 +109,46 @@ async function handler(req, res) {
       });
     }
 
-    const datosCompletos = await response.json();
-    
     if (!Array.isArray(datosCompletos)) {
-      console.warn('Respuesta de API externa no es un array:', datosCompletos);
-      return res.status(200).json({
-        success: true,
-        data: {
-          examen: {
-            id: examen.id,
-            nombre: examen.nombreMateria,
-            fecha: examen.fecha?.toISOString().split('T')[0],
-            hora: examen.hora?.toTimeString().split(' ')[0],
-            carrera: {
-              nombre: examen.carrera.nombre,
-              facultad: examen.carrera.facultad.nombre
-            },
-            aula: examen.aula ? {
-              id: examen.aula.id,
-              nombre: examen.aula.nombre,
-              capacidad: examen.aula.capacidad
-            } : null,
-            codigoMateria: codigoMateria,
-            areaTema: areaTema,
-            carreraTotem: carreraTotem
-          },
-          inscriptos: [],
-          cantidadInscriptos: 0,
-          apiExternaDisponible: true
-        }
-      });
+      datosCompletos = [];
     }
 
-    // 4. FILTRAR CORRECTAMENTE por areaTema (removido filtro de carrera para evitar inconsistencias)
-    console.log(`🔍 Aplicando filtro: areaTema=${areaTema} (carrera removida por inconsistencias)`);
-    
-    const inscriptosFiltrados = datosCompletos.filter(registro => {
-      const cumpleAreaTema = areaTema ? registro.areaTema == areaTema : true;
-      const tieneAlumnos = registro.alumnos && registro.alumnos.length > 0;
-      
-      console.log(`Registro: areaTema=${registro.areaTema}, carrera=${registro.carrera}, alumnos=${registro.alumnos?.length || 0}`);
-      console.log(`Cumple filtros: areaTema=${cumpleAreaTema}, tieneAlumnos=${tieneAlumnos}`);
-      
-      return cumpleAreaTema && tieneAlumnos;
+    // 4. Filtrar actas por areaTema, modo=7 y carrera (para no mezclar inscriptos de distintas carreras)
+    let actasFiltradas = datosCompletos.filter(acta => {
+      const matchAreaTema = areaTema ? acta.areaTema?.toString() === areaTema?.toString() : true;
+      const matchModo = acta.modo?.toString() === "7";
+      const matchCarrera = carreraTotem ? acta.carrera?.toString() === carreraTotem.toString() : true;
+      return matchAreaTema && matchModo && matchCarrera;
     });
 
-    console.log(`✅ Después del filtro: ${inscriptosFiltrados.length} registros válidos`);
+    // 🎯 DISCRIMINACIÓN POR DOCENTE + CÁTEDRA
+    // strict=true si el examen tiene cátedra explícita (A/B/C/etc.),
+    // porque eso garantiza que hay hermanos — no mezclar inscriptos.
+    const tieneCatedraExplicita = examen.catedra && examen.catedra !== '-' && examen.catedra.trim() !== '';
+    if (examen.docente || examen.catedra) {
+      actasFiltradas = actaService.discriminarActasPorDocente(
+        actasFiltradas, codigoMateria, examen.docente, examen.catedra,
+        { umbral: 0.4, strict: tieneCatedraExplicita }
+      );
+    }
+    console.log(`✅ Actas filtradas: ${actasFiltradas.length} de ${datosCompletos.length}`);
 
-    // 5. Extraer todos los alumnos de los registros filtrados
-    let todosLosInscriptos = [];
-    inscriptosFiltrados.forEach(registro => {
-      if (registro.alumnos && Array.isArray(registro.alumnos)) {
-        todosLosInscriptos = todosLosInscriptos.concat(registro.alumnos);
+    // 5. Extraer alumnos con lugar=3 y modo=7 (filtro a nivel de alumno)
+    const inscriptosVirtuales = [];
+    actasFiltradas.forEach(acta => {
+      if (acta.alumnos && Array.isArray(acta.alumnos)) {
+        acta.alumnos.forEach(alumno => {
+          // Filtrar por lugar=3 (SALTA - DISTANCIA) y modo=7 a nivel de alumno
+          if (alumno.lugar?.toString() === "3" && alumno.modo?.toString() === "7") {
+            inscriptosVirtuales.push(alumno);
+          }
+        });
       }
     });
 
-    console.log(`📊 Total de inscriptos encontrados: ${todosLosInscriptos.length}`);
+    console.log(`🎓 Inscriptos virtuales (lugar=3, modo=7): ${inscriptosVirtuales.length}`);
 
-    // 6. FILTRAR OBLIGATORIAMENTE POR LUGAR "3" (SALTA - DISTANCIA)
-    // ⚠️ CRITERIO OBLIGATORIO Y EXCLUYENTE: Solo inscriptos con lugar === "3"
-    // NO importa el sector, modo, etc. - SOLO lugar "3" es válido
-    const inscriptosVirtuales = todosLosInscriptos.filter(inscripto => {
-      const esLugarTres = inscripto.lugar === "3";
-      
-      console.log(`🎯 Inscripto ${inscripto.apen}: lugar="${inscripto.lugar}", nombreLugar="${inscripto.nombreLugar}", modo="${inscripto.nombreModo}", ✅OBLIGATORIO_lugar_3=${esLugarTres}`);
-      
-      return esLugarTres;
-    });
-
-    console.log(`🎓 Inscriptos de modalidad virtual: ${inscriptosVirtuales.length} de ${todosLosInscriptos.length} totales`);
-
-    // 7. Formatear inscriptos virtuales
+    // 6. Formatear inscriptos
     const inscriptosFormateados = inscriptosVirtuales.map(inscripto => ({
       dni: inscripto.ndocu,
       nombre: inscripto.apen,
