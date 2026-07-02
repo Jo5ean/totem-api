@@ -68,9 +68,6 @@ async function procesarBatch(fecha) {
         fecha: {
           gte: fechaDate,
           lt: fechaSiguiente
-        },
-        examenTotem: {
-          isNot: null
         }
       },
       include: {
@@ -102,7 +99,12 @@ async function procesarBatch(fecha) {
     // Detectar "hermanos": exámenes con mismo materia+areaTema+carrera+fecha
     // (típicamente, mismas filas del Sheet con distinta cátedra/docente).
     const siblingsCount = new Map(); // key -> count
-    const siblingsKey = (ex) => `${ex.examenTotem.materiaTotem}|${ex.examenTotem.areaTemaTotem || ''}|${ex.examenTotem.carreraTotem || ''}`;
+    const siblingsKey = (ex) => {
+      const materia = ex.examenTotem?.materiaTotem || ex.materia_codigo;
+      const area = ex.examenTotem?.areaTemaTotem || ex.areatema || '';
+      const carrera = ex.examenTotem?.carreraTotem || ex.carrera?.codigo || '';
+      return `${materia}|${area}|${carrera}`;
+    };
     for (const ex of examenes) {
       const k = siblingsKey(ex);
       siblingsCount.set(k, (siblingsCount.get(k) || 0) + 1);
@@ -110,8 +112,10 @@ async function procesarBatch(fecha) {
 
     for (const examen of examenes) {
       const totem = examen.examenTotem;
-      const materiaId = totem.materiaTotem;
-      const areaTema = totem.areaTemaTotem;
+      // Usar materiaTotem si existe, sino usar materia_codigo directo
+      const materiaId = totem?.materiaTotem || examen.materia_codigo;
+      const areaTema = totem?.areaTemaTotem || examen.areatema;
+      const carreraTotem = totem?.carreraTotem || examen.carrera?.codigo;
 
       if (!materiaId) {
         recordBatchResult({
@@ -123,9 +127,15 @@ async function procesarBatch(fecha) {
         continue;
       }
 
+      // Log para depurar exámenes específicos
+      if (examen.id === 247 || examen.id === 248 || examen.id === 249) {
+        console.log(`🔍 Procesando examen ${examen.id}: ${examen.nombreMateria}, catedra: ${examen.catedra}, materiaId: ${materiaId}, areaTema: ${areaTema}, carreraTotem: ${carreraTotem}`);
+      }
+
       try {
         // Usar cache si ya consultamos esta materia
-        const cacheKey = `${materiaId}_${areaTema}`;
+        // Incluir catedra en la clave para no mezclar datos entre comisiones hermanas
+        const cacheKey = `${materiaId}_${areaTema}_${examen.catedra || '-'}`;
         let datosCompletos;
 
         if (materiaCache.has(cacheKey)) {
@@ -139,11 +149,11 @@ async function procesarBatch(fecha) {
           if (!Array.isArray(datosCompletos)) datosCompletos = [];
           materiaCache.set(cacheKey, datosCompletos);
           // Pausa entre consultas a API externa
-          await new Promise(resolve => setTimeout(resolve, 150));
+          await new Promise(resolve => setTimeout(resolve, 50));
         }
 
         // Filtrar actas por areaTema, modo=7 y carrera (para no mezclar inscriptos de distintas carreras)
-        const carreraTotem = totem.carreraTotem;
+        const carreraTotem = totem?.carreraTotem || examen.carrera?.codigo;
         let actasFiltradas = datosCompletos.filter(acta => {
           const matchAreaTema = areaTema ? acta.areaTema?.toString() === areaTema?.toString() : true;
           const matchModo = acta.modo?.toString() === "7";
@@ -166,16 +176,73 @@ async function procesarBatch(fecha) {
         }
 
         // Extraer alumnos con lugar=3 y modo=7
-        let totalInscriptos = 0;
+        let estudiantesTotal = [];
         actasFiltradas.forEach(acta => {
           if (acta.alumnos && Array.isArray(acta.alumnos)) {
             acta.alumnos.forEach(alumno => {
               if (alumno.lugar?.toString() === "3" && alumno.modo?.toString() === "7") {
-                totalInscriptos++;
+                estudiantesTotal.push(alumno);
               }
             });
           }
         });
+
+        console.log(`👥 ${estudiantesTotal.length} estudiantes VÁLIDOS procesados (con lugar="3")`);
+
+        // Log específico para SOCIOLOGIA
+        if (examen.id === 247 || examen.id === 248 || examen.id === 249) {
+          console.log(`🔍 [SOCIOLOGIA ${examen.id}] Antes de discriminación por cátedra: ${estudiantesTotal.length} estudiantes`);
+        }
+
+        // 🎯 DISCRIMINACIÓN POR CÁTEDRA A NIVEL DE ALUMNO
+        // UCASAL devuelve la cátedra (A/B/C) en cada alumno. Cuando el examen tiene
+        // una cátedra específica y los datos traen esa información, asignamos sólo
+        // los alumnos de esa cátedra para no replicar inscriptos entre comisiones hermanas.
+        const catedraExamen = (examen.catedra || '').toString().trim();
+        const catedraEsEspecifica = catedraExamen !== '' && catedraExamen !== '-';
+
+        // Verificar si los alumnos tienen campo catedra
+        const alumnosConCatedra = estudiantesTotal.filter(al => {
+          const c = (al.catedra || '').toString().trim();
+          return c !== '' && c !== '-';
+        });
+        const hayCatedraEnDatos = alumnosConCatedra.length > 0;
+
+        console.log(`🔍 Cátedra examen: "${catedraExamen}" (específica: ${catedraEsEspecifica}), hay cátedra en datos: ${hayCatedraEnDatos} (${alumnosConCatedra.length} alumnos con cátedra)`);
+
+        if (catedraEsEspecifica && hayCatedraEnDatos) {
+          // Discriminación por cátedra cuando los datos tienen información de cátedra
+          const antes = estudiantesTotal.length;
+          estudiantesTotal = estudiantesTotal.filter(al =>
+            (al.catedra || '').toString().trim().toUpperCase() === catedraExamen.toUpperCase()
+          );
+          console.log(`🎯 Discriminación por cátedra "${catedraExamen}": ${estudiantesTotal.length}/${antes} alumnos`);
+        } else if (catedraEsEspecifica && !hayCatedraEnDatos) {
+          // Cuando el examen tiene cátedra específica pero los datos no tienen información de cátedra,
+          // dividimos los inscriptos entre las cátedras hermanas para no replicar
+          const key = siblingsKey(examen);
+          const numHermanos = siblingsCount.get(key) || 1;
+          const inscriptosDivididos = Math.ceil(estudiantesTotal.length / numHermanos);
+          console.log(`⚠️ Sin cátedra en datos, dividiendo ${estudiantesTotal.length} inscriptos entre ${numHermanos} cátedras hermanas: ${inscriptosDivididos} por cátedra`);
+          estudiantesTotal = []; // No asignamos alumnos específicos, solo contamos
+          const totalInscriptos = inscriptosDivididos;
+          await prisma.examen.update({
+            where: { id: examen.id },
+            data: {
+              cantidadInscriptos: totalInscriptos,
+              fechaUltConsulta: new Date()
+            }
+          });
+          recordBatchResult({
+            id: examen.id,
+            nombre: examen.nombreMateria,
+            inscriptos: totalInscriptos,
+            estado: 'ok'
+          }, true);
+          continue; // Saltar al siguiente examen
+        }
+
+        const totalInscriptos = estudiantesTotal.length;
 
         // Guardar en DB
         await prisma.examen.update({

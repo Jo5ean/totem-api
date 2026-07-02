@@ -950,7 +950,7 @@ class TotemService {
       }
       
       // 6. Extraer estudiantes de todas las actas filtradas
-      const estudiantesTotal = [];
+      let estudiantesTotal = [];
 
       // Filtro obligatorio: modo=7
       const MODO_REQUERIDO = "7";
@@ -974,6 +974,26 @@ class TotemService {
       }
       
       console.log(`👥 ${estudiantesTotal.length} estudiantes VÁLIDOS procesados (con lugar="3")`);
+
+      // 🎯 DISCRIMINACIÓN POR CÁTEDRA A NIVEL DE ALUMNO
+      // UCASAL devuelve la cátedra (A/B/C) en cada alumno. Cuando el examen tiene
+      // una cátedra específica y los datos traen esa información, asignamos sólo
+      // los alumnos de esa cátedra para no replicar inscriptos entre comisiones hermanas.
+      const catedraExamen = (examen.catedra || '').toString().trim();
+      const catedraEsEspecifica = catedraExamen !== '' && catedraExamen !== '-';
+      const hayCatedraEnDatos = estudiantesTotal.some(al => {
+        const c = (al.catedra || '').toString().trim();
+        return c !== '' && c !== '-';
+      });
+
+      console.log(`🔍 Cátedra examen: "${catedraExamen}" (específica: ${catedraEsEspecifica}), hay cátedra en datos: ${hayCatedraEnDatos}`);
+      if (catedraEsEspecifica && hayCatedraEnDatos) {
+        const antes = estudiantesTotal.length;
+        estudiantesTotal = estudiantesTotal.filter(al =>
+          (al.catedra || '').toString().trim().toUpperCase() === catedraExamen.toUpperCase()
+        );
+        console.log(`🎯 Discriminación por cátedra "${catedraExamen}": ${estudiantesTotal.length}/${antes} alumnos`);
+      }
       
       // 7. Crear registros EstudianteExamen
       let estudiantesCreados = 0;
@@ -1032,6 +1052,20 @@ class TotemService {
         }
       }
       
+      // 7b. Eliminar relaciones obsoletas: inscriptos que ya no corresponden a este
+      // examen (p. ej. tras discriminar por cátedra dejan de pertenecer a esta comisión).
+      try {
+        const dnisValidos = Array.from(estudiantesProcesados);
+        await prisma.estudianteExamen.deleteMany({
+          where: {
+            examen_id: examenId,
+            ...(dnisValidos.length > 0 ? { dni: { notIn: dnisValidos } } : {}),
+          },
+        });
+      } catch (cleanupError) {
+        console.error(`Error limpiando inscriptos obsoletos del examen ${examenId}:`, cleanupError.message);
+      }
+
       // 8. Actualizar contador en el examen
       await prisma.examen.update({
         where: { id: examenId },
